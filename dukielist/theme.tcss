@@ -1,0 +1,429 @@
+$bg: #050918;
+$surface: #071126;
+$line: #1f4a7d;
+$cyan: #00e5ff;
+$magenta: #ff38d1;
+$muted: #7188af;
+$text: #dbe8ff;
+
+Screen {
+    background: $bg;
+    color: $text;
+    scrollbar-background: #071126;
+    scrollbar-color: #24518a;
+    scrollbar-size: 1 1;
+}
+
+Button {
+    background: #0a1832;
+    color: $text;
+    border: round #24558d;
+    height: 3;
+    min-width: 12;
+    padding: 0 2;
+}
+
+Button:hover, Button:focus {
+    background: #12345b;
+    color: #ffffff;
+    border: round $cyan;
+}
+
+#welcome-card {
+    width: 90%;
+    height: 70%;
+    margin: 8 5;
+    padding: 3 5;
+    border: round $cyan;
+    background: #071126;
+    align: center middle;
+}
+
+.eyebrow {
+    color: $cyan;
+    text-style: bold;
+    margin-bottom: 2;
+}
+
+.welcome-brand {
+    width: auto;
+    height: auto;
+    margin: 1 0 2 0;
+    content-align: center middle;
+}
+
+.welcome-prompt {
+    color: #a9bee4;
+    text-style: bold;
+    margin: 1 0 3 0;
+}
+
+#mode-chooser {
+    width: 100%;
+    height: 10;
+    align: center middle;
+}
+
+.mode-card {
+    width: 28;
+    height: 8;
+    margin: 0 1;
+    color: #a9bee4;
+    border: round #24558d;
+}
+
+.mode-card.selected, .mode-card.selected:focus {
+    color: #ffffff;
+    background: #12345b;
+    border: double $magenta;
+    text-style: bold;
+}
+
+.welcome-help {
+    color: $magenta;
+    margin-top: 4;
+    text-style: bold;
+}
+
+.welcome-meta {
+    color: $muted;
+    margin-top: 2;
+}
+
+#main-shell {
+    width: 100%;
+    height: 100%;
+    padding: 1 2;
+}
+
+#brand-header {
+    height: 7;
+    padding: 0 1;
+    border-bottom: solid $line;
+}
+
+#view-tabs {
+    height: 5;
+    margin-top: 1;
+    padding: 1 1;
+    border: round $cyan;
+    background: #07142b;
+    align: center middle;
+}
+
+.tabs-label {
+    width: 19;
+    color: $magenta;
+    text-style: bold;
+}
+
+.view-tab {
+    min-width: 13;
+    height: 3;
+    margin-right: 1;
+    border: round #31558b;
+}
+
+.view-tab.active, .view-tab.active:focus {
+    background: #113c65;
+    color: #ffffff;
+    border: double $cyan;
+    text-style: bold;
+}
+
+.tab-hint {
+    width: 1fr;
+    color: $magenta;
+    content-align: right middle;
+}
+
+#body {
+    height: 1fr;
+    margin-top: 1;
+}
+
+#main-column {
+    width: 1fr;
+    height: 100%;
+}
+
+#sidebar {
+    width: 28;
+    height: 100%;
+    margin-left: 1;
+}
+
+#period-bar {
+    height: 5;
+    padding: 0 1;
+    border: round #24558d;
+    background: #071126;
+    align: center middle;
+}
+
+.period-arrow {
+    min-width: 5;
+    width: 5;
+    height: 3;
+    border: none;
+    color: $cyan;
+    background: transparent;
+    text-style: bold;
+}
+
+.period-title {
+    width: 1fr;
+    color: #bfe4ff;
+    text-style: bold;
+    content-align: left middle;
+}
+
+.primary-action {
+    color: $cyan;
+    border: round $cyan;
+    background: #0a2746;
+}
+
+.secondary-action {
+    color: #b7c9e9;
+    border: round #365e95;
+    background: #0a1832;
+}
+
+.danger-action {
+    color: #ff416c;
+    border: round #ff416c;
+    background: #321329;
+}
+
+#views {
+    height: 1fr;
+    margin-top: 1;
+}
+
+.view-panel {
+    display: none;
+    height: 100%;
+}
+
+.view-panel.active-view {
+    display: block;
+}
+
+TaskTable {
+    height: 1fr;
+    border: round $cyan;
+    background: #061025;
+    color: $text;
+}
+
+TaskTable:focus {
+    border: double $magenta;
+}
+
+DataTable > .datatable--header {
+    color: $cyan;
+    background: #0d2343;
+    text-style: bold;
+}
+
+.empty-state {
+    display: none;
+    height: 3;
+    color: $muted;
+    text-style: italic;
+    content-align: center middle;
+}
+
+#progress-panel, #summary-panel, #shortcuts-panel {
+    border: round #24558d;
+    background: #071126;
+    padding: 1 2;
+}
+
+#progress-panel {
+    height: 6;
+    margin-top: 1;
+}
+
+#summary-panel {
+    height: 1fr;
+    min-height: 14;
+}
+
+#shortcuts-panel {
+    height: 23;
+    margin-top: 1;
+}
+
+#month-calendar {
+    height: 1fr;
+    min-height: 16;
+    border: round $magenta;
+    background: #061025;
+    padding: 1;
+}
+
+.subheading {
+    height: 3;
+    margin-top: 1;
+    padding: 1 2;
+    color: $magenta;
+    border: round #713b88;
+    text-style: bold;
+}
+
+#month-table {
+    height: 12;
+    margin-top: 1;
+}
+
+.calendar-help {
+    height: 2;
+    color: $muted;
+    content-align: center middle;
+}
+
+#app-footer {
+    height: 2;
+    padding: 0 1;
+    color: $muted;
+}
+
+.footer-left {
+    width: 1fr;
+}
+
+.footer-right {
+    width: auto;
+    content-align: right middle;
+}
+
+ModalScreen {
+    background: rgba(1, 5, 18, 0.85);
+    align: center middle;
+}
+
+#form-overlay {
+    width: 76%;
+    height: 90%;
+    border: double $cyan;
+    background: #071126;
+    padding: 2 3;
+}
+
+#form-card {
+    width: 100%;
+    height: auto;
+}
+
+.modal-heading {
+    height: 4;
+    align: left middle;
+}
+
+.modal-symbol {
+    width: 5;
+    color: $cyan;
+    text-style: bold;
+}
+
+.modal-title {
+    width: 1fr;
+    color: $cyan;
+    text-style: bold;
+}
+
+.modal-title.danger {
+    color: #ff416c;
+}
+
+.modal-subtitle {
+    color: $muted;
+    margin-bottom: 1;
+}
+
+.close-button {
+    width: 5;
+    min-width: 5;
+    color: $magenta;
+    border: round $magenta;
+}
+
+.field-label {
+    color: #9fdcff;
+    text-style: bold;
+    margin-top: 1;
+    margin-bottom: 0;
+}
+
+Input, TextArea, Select {
+    width: 100%;
+    border: round #315e98;
+    background: #050d1d;
+    color: $text;
+}
+
+Input:focus, TextArea:focus, Select:focus {
+    border: double $cyan;
+    background: #0c2547;
+}
+
+TextArea {
+    height: 5;
+}
+
+.fields-row {
+    height: auto;
+    width: 100%;
+}
+
+.field-half {
+    width: 1fr;
+    margin-right: 1;
+}
+
+.field-half:last-child {
+    margin-right: 0;
+}
+
+.modal-divider {
+    color: $magenta;
+    margin: 1 0;
+}
+
+.form-actions {
+    height: 4;
+    align: center middle;
+}
+
+.form-actions Button {
+    margin: 0 1;
+}
+
+#confirm-card, #filter-card, #help-card {
+    width: 52;
+    height: auto;
+    max-height: 86%;
+    padding: 2 3;
+    border: double $magenta;
+    background: #071126;
+}
+
+.confirm-task {
+    color: #ffffff;
+    border: round #315e98;
+    background: #0c2547;
+    padding: 1 2;
+    margin: 2 0;
+    text-style: bold;
+}
+
+.confirm-question {
+    color: #b8c8e7;
+}
+
+.help-copy {
+    margin: 2 0;
+    color: #dbe8ff;
+}
