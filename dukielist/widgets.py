@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import calendar
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Iterable
 
+from rich import box
 from rich.table import Table
 from rich.text import Text
 from textual.message import Message
@@ -90,6 +91,43 @@ class BrandHeader(Static):
         return result
 
 
+class ModeCard(Static):
+    class Selected(Message):
+        def __init__(self, mode: str) -> None:
+            self.mode = mode
+            super().__init__()
+
+    can_focus = True
+
+    def __init__(self, mode: str, label: str, description: str, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.mode = mode
+        self.label = label
+        self.description = description
+
+    def render(self) -> Text:
+        text = Text()
+        text.append(f"[ {self.label} ]\n", style="#eaf3ff bold")
+        text.append(self.description, style="#9bb2d6")
+        return text
+
+    def on_key(self, event) -> None:
+        if event.key == "enter":
+            self.post_message(self.Selected(self.mode))
+            event.stop()
+
+
+class HeaderInfo(Static):
+    def render(self) -> Text:
+        now = datetime.now()
+        weekdays = ("seg", "ter", "qua", "qui", "sex", "sáb", "dom")
+        text = Text()
+        text.append("LOCAL DATA\n", style="#00e5ff bold")
+        text.append("TERMINAL ACTIVE\n", style="#ff38d1 bold")
+        text.append(f"{weekdays[now.weekday()]}, {now:%d/%m/%Y}  {now:%H:%M}", style="#c9d8f2")
+        return text
+
+
 class ProgressPanel(Static):
     def update_progress(self, label: str, progress: Progress) -> None:
         line = Text()
@@ -122,10 +160,11 @@ class SummaryPanel(Static):
 
 class ShortcutsPanel(Static):
     def update_mode(self, mode: str, filters_active: bool = False) -> None:
+        mode_labels = {"day": "DIA", "week": "SEMANA", "month": "MÊS"}
         text = Text()
         text.append("▸ ", style="#00e5ff bold")
         text.append("COMANDOS", style="#ff8be9 bold")
-        text.append(f"  [{mode.upper()}]\n\n", style="#a4b4d3")
+        text.append(f"  [{mode_labels.get(mode, mode.upper())}]\n\n", style="#a4b4d3")
         rows = [
             ("a", "Adicionar tarefa"),
             ("e", "Editar selecionada"),
@@ -142,6 +181,18 @@ class ShortcutsPanel(Static):
             text.append(f" {label}\n", style="#c8d5ee")
         if filters_active:
             text.append("\n● filtros ativos", style="#ff38d1 bold")
+        self.update(text)
+
+
+class CategoriesPanel(Static):
+    def update_categories(self) -> None:
+        text = Text()
+        text.append("▸ ", style="#ff38d1 bold")
+        text.append("CATEGORIAS", style="#ff8be9 bold")
+        text.append("\n\n", style="")
+        for category in Category:
+            text.append("● ", style=CATEGORY_COLORS[category.value])
+            text.append(f"{category.value.capitalize()}\n", style="#c8d5ee")
         self.update(text)
 
 
@@ -170,7 +221,7 @@ class CalendarGrid(Static):
         self.update(self._render_calendar())
 
     def _render_calendar(self) -> Table:
-        table = Table(expand=True, show_edge=False, box=None, padding=(0, 1))
+        table = Table(expand=True, show_edge=True, box=box.SQUARE, padding=(0, 1))
         for heading in ("DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"):
             table.add_column(heading, justify="left", style="#a9bee4", ratio=1)
         weeks = calendar.Calendar(firstweekday=6).monthdayscalendar(self.year, self.month)
@@ -213,6 +264,93 @@ class CalendarGrid(Static):
             self.update(self._render_calendar())
             self.post_message(self.DaySelected(self.selected_date))
             event.stop()
+
+
+class WeekBoard(Static):
+    class TaskCursorChanged(Message):
+        def __init__(self, task_id: int | None) -> None:
+            self.task_id = task_id
+            super().__init__()
+
+    can_focus = True
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.start = date.today() - timedelta(days=date.today().weekday())
+        self.tasks: list[Task] = []
+        self.tasks_by_day: dict[date, list[Task]] = {}
+        self.day_index = date.today().weekday()
+        self.task_index = 0
+
+    def set_week(self, start: date, tasks: list[Task]) -> None:
+        self.start = start
+        self.tasks = tasks
+        self.tasks_by_day = {}
+        for task in tasks:
+            self.tasks_by_day.setdefault(task.task_date, []).append(task)
+        self.day_index = min(max(self.day_index, 0), 6)
+        self.task_index = min(self.task_index, max(len(self.tasks_by_day.get(self.start + timedelta(days=self.day_index), [])) - 1, 0))
+        self.update(self._render_board())
+
+    def _current_day_tasks(self) -> list[Task]:
+        return self.tasks_by_day.get(self.start + timedelta(days=self.day_index), [])
+
+    def _current_task_id(self) -> int | None:
+        tasks = self._current_day_tasks()
+        return tasks[self.task_index].id if tasks and self.task_index < len(tasks) else None
+
+    def _render_board(self) -> Table:
+        table = Table(expand=True, show_edge=True, box=box.SQUARE, padding=(0, 1))
+        day_names = ("SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM")
+        for index, name in enumerate(day_names):
+            style = "#ff38d1 bold" if index == 6 else "#00e5ff bold"
+            table.add_column(name, style=style, ratio=1)
+
+        cells: list[Text] = []
+        for index in range(7):
+            current = self.start + timedelta(days=index)
+            day_tasks = self.tasks_by_day.get(current, [])
+            cell = Text(f"{current:%d/%m}\n", style="#9fb6dd bold")
+            if current == date.today():
+                cell.append("HOJE\n", style="#00e5ff bold")
+            else:
+                cell.append("\n")
+            if not day_tasks:
+                cell.append("—\n", style="#50698f")
+            for task_position, task in enumerate(day_tasks[:5]):
+                marker = "✓" if task.completed else "·"
+                style = "#7188af strike" if task.completed else "#dbe8ff"
+                cell.append(f"{marker} {task.title[:18]}\n", style=style)
+                cell.append(f"  {task.priority.value.capitalize()}  ", style=PRIORITY_COLORS[task.priority.value])
+                cell.append(f"{task.category.value.capitalize()}\n", style=CATEGORY_COLORS[task.category.value])
+                if index == self.day_index and task_position == self.task_index:
+                    cell.stylize("on #12345b")
+            if len(day_tasks) > 5:
+                cell.append(f"+ {len(day_tasks) - 5} tarefas\n", style="#91a7cc")
+            if index == self.day_index:
+                cell.stylize("#ffffff bold")
+                cell.stylize("on #102e51")
+            cells.append(cell)
+        table.add_row(*cells)
+        return table
+
+    def on_key(self, event) -> None:
+        if event.key in {"left", "right"}:
+            self.day_index = (self.day_index + (1 if event.key == "right" else -1)) % 7
+            self.task_index = 0
+            self.update(self._render_board())
+            self.post_message(self.TaskCursorChanged(self._current_task_id()))
+            event.stop()
+        elif event.key in {"up", "down"}:
+            tasks = self._current_day_tasks()
+            if tasks:
+                delta = 1 if event.key == "down" else -1
+                self.task_index = (self.task_index + delta) % len(tasks)
+                self.update(self._render_board())
+                self.post_message(self.TaskCursorChanged(self._current_task_id()))
+            event.stop()
+        elif event.key == "enter":
+            self.post_message(self.TaskCursorChanged(self._current_task_id()))
 
 
 class TaskTable(DataTable):

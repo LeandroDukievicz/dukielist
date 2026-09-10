@@ -11,7 +11,18 @@ from textual.widgets import Button, DataTable, Input, Select, Static, TextArea
 
 from .models import Category, Priority, Status, Task, ViewMode, format_date, parse_date, parse_time
 from .services import TaskFilters, TaskService, month_bounds, shift_month, week_bounds
-from .widgets import BrandHeader, CalendarGrid, ProgressPanel, ShortcutsPanel, SummaryPanel, TaskTable
+from .widgets import (
+    BrandHeader,
+    CalendarGrid,
+    CategoriesPanel,
+    HeaderInfo,
+    ProgressPanel,
+    ShortcutsPanel,
+    SummaryPanel,
+    TaskTable,
+    ModeCard,
+    WeekBoard,
+)
 
 
 def _select_value(value: Any, enum_type):
@@ -40,9 +51,9 @@ class WelcomeScreen(Screen[None]):
             BrandHeader(classes="welcome-brand"),
             Static("Escolha uma visualização para começar", classes="welcome-prompt"),
             Horizontal(
-                Button("[ DIA ]\nTarefas de hoje", id="welcome-day", classes="mode-card"),
-                Button("[ SEMANA ]\nRitmo dos próximos dias", id="welcome-week", classes="mode-card"),
-                Button("[ MÊS ]\nMapa do mês", id="welcome-month", classes="mode-card"),
+                ModeCard("day", "DIA", "Tarefas de hoje", id="welcome-day", classes="mode-card"),
+                ModeCard("week", "SEMANA", "Ritmo dos próximos dias", id="welcome-week", classes="mode-card"),
+                ModeCard("month", "MÊS", "Mapa do mês", id="welcome-month", classes="mode-card"),
                 id="mode-chooser",
             ),
             Static("← → selecionar   •   ENTER abrir   •   TAB navegar   •   Q sair", classes="welcome-help"),
@@ -55,8 +66,8 @@ class WelcomeScreen(Screen[None]):
 
     def _refresh_selection(self) -> None:
         for index, mode in enumerate(self.modes):
-            self.query_one(f"#welcome-{mode.value}", Button).set_class(index == self.selected, "selected")
-        self.query_one(f"#welcome-{self.modes[self.selected].value}", Button).focus()
+            self.query_one(f"#welcome-{mode.value}", ModeCard).set_class(index == self.selected, "selected")
+        self.query_one(f"#welcome-{self.modes[self.selected].value}", ModeCard).focus()
 
     def action_previous(self) -> None:
         self.selected = (self.selected - 1) % len(self.modes)
@@ -77,6 +88,10 @@ class WelcomeScreen(Screen[None]):
             self.selected = self.modes.index(ViewMode(event.button.id.removeprefix("welcome-")))
             self.app.start_main(self.modes[self.selected])
 
+    def on_mode_card_selected(self, event: ModeCard.Selected) -> None:
+        self.selected = self.modes.index(ViewMode(event.mode))
+        self.app.start_main(self.modes[self.selected])
+
 
 class DayView(Vertical):
     def compose(self) -> ComposeResult:
@@ -86,8 +101,8 @@ class DayView(Vertical):
 
 class WeekView(Vertical):
     def compose(self) -> ComposeResult:
+        yield WeekBoard(id="week-board")
         yield TaskTable(id="week-table")
-        yield Static("Nenhuma tarefa nesta semana. Pressione A para adicionar.", classes="empty-state", id="week-empty")
 
 
 class MonthView(Vertical):
@@ -121,12 +136,16 @@ class MainScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield Container(
-            BrandHeader(id="brand-header"),
             Horizontal(
-                Static("◫  VISUALIZAÇÃO", classes="tabs-label"),
-                Button("[ DIA ]", id="mode-day", classes="view-tab"),
-                Button("[ SEMANA ]", id="mode-week", classes="view-tab"),
-                Button("[ MÊS ]", id="mode-month", classes="view-tab"),
+                BrandHeader(id="brand-header"),
+                HeaderInfo(id="header-info"),
+                id="header-row",
+            ),
+            Horizontal(
+                Static("▣  Visualização:", classes="tabs-label"),
+                Button(Text("[ Dia ]"), id="mode-day", classes="view-tab"),
+                Button(Text("[ Semana ]"), id="mode-week", classes="view-tab"),
+                Button(Text("[ Mês ]"), id="mode-month", classes="view-tab"),
                 Static("D / W / M alternam o modo  •  N/B mudam o período", classes="tab-hint"),
                 id="view-tabs",
             ),
@@ -136,8 +155,8 @@ class MainScreen(Screen[None]):
                         Button("‹", id="previous-period", classes="period-arrow"),
                         Static(id="period-title", classes="period-title"),
                         Button("›", id="next-period", classes="period-arrow"),
-                        Button("＋ ADICIONAR", id="add-task", classes="primary-action"),
-                        Button("✎ EDITAR", id="edit-task", classes="secondary-action"),
+                        Button(Text("[ ＋ Adicionar tarefa ]"), id="add-task", classes="primary-action"),
+                        Button(Text("[ ✎ Editar tarefa ]"), id="edit-task", classes="secondary-action"),
                         id="period-bar",
                     ),
                     Vertical(
@@ -149,10 +168,11 @@ class MainScreen(Screen[None]):
                     ProgressPanel(id="progress-panel"),
                     id="main-column",
                 ),
-                Vertical(
+                VerticalScroll(
                     SummaryPanel(id="summary-panel"),
                     ShortcutsPanel(id="shortcuts-panel"),
-                    id="sidebar",
+                    CategoriesPanel(id="categories-panel"),
+                        id="sidebar",
                 ),
                 id="body",
             ),
@@ -166,7 +186,7 @@ class MainScreen(Screen[None]):
 
     def on_mount(self) -> None:
         self._refresh_all()
-        self.query_one(f"#mode-{self.mode.value}", Button).focus()
+        self._focus_active_view()
 
     def _period_range(self) -> tuple[date, date]:
         if self.mode is ViewMode.DAY:
@@ -194,7 +214,9 @@ class MainScreen(Screen[None]):
         day_tasks = self.service.list_between(self.anchor_date, self.anchor_date + timedelta(days=1), self.filters)
         self._fill_table("day-table", day_tasks)
         week_start, week_end = week_bounds(self.anchor_date)
-        self._fill_table("week-table", self.service.list_between(week_start, week_end, self.filters))
+        week_tasks = self.service.list_between(week_start, week_end, self.filters)
+        self._fill_table("week-table", week_tasks)
+        self.query_one("#week-board", WeekBoard).set_week(week_start, week_tasks)
         month_start, month_end = month_bounds(self.anchor_date)
         month_tasks = self.service.list_between(month_start, month_end, self.filters)
         calendar_grid = self.query_one("#month-calendar", CalendarGrid)
@@ -215,9 +237,9 @@ class MainScreen(Screen[None]):
             self.selected_task_id = tasks[0].id
 
     def _update_empty_states(self) -> None:
-        for table_id, empty_id in (("day-table", "day-empty"), ("week-table", "week-empty")):
-            table = self.query_one(f"#{table_id}", TaskTable)
-            self.query_one(f"#{empty_id}", Static).display = not bool(table.rows)
+        table = self.query_one("#day-table", TaskTable)
+        table.display = bool(table.rows)
+        self.query_one("#day-empty", Static).display = not bool(table.rows)
 
     def _update_summary(self, tasks: list[Task], label: str) -> None:
         category_counts = {category.value: 0 for category in Category}
@@ -225,13 +247,24 @@ class MainScreen(Screen[None]):
             category_counts[task.category.value] += 1
         progress = self.service.progress(tasks)
         self.query_one("#summary-panel", SummaryPanel).update_summary(progress, label, category_counts)
-        self.query_one("#progress-panel", ProgressPanel).update_progress(f"Progresso do {self.mode.value}", progress)
+        mode_labels = {ViewMode.DAY: "dia", ViewMode.WEEK: "semana", ViewMode.MONTH: "mês"}
+        self.query_one("#progress-panel", ProgressPanel).update_progress(f"Progresso do {mode_labels[self.mode]}", progress)
         self.query_one("#shortcuts-panel", ShortcutsPanel).update_mode(self.mode.value, self.filters.active)
+        self.query_one("#summary-panel", SummaryPanel).display = self.mode is ViewMode.MONTH
+        self.query_one("#categories-panel", CategoriesPanel).display = self.mode is not ViewMode.MONTH
 
     def _set_active_mode(self) -> None:
         for mode in ViewMode:
             self.query_one(f"#mode-{mode.value}", Button).set_class(mode is self.mode, "active")
             self.query_one(f"#{mode.value}-view", Vertical).set_class(mode is self.mode, "active-view")
+
+    def _focus_active_view(self) -> None:
+        focus_targets = {
+            ViewMode.DAY: "#day-table",
+            ViewMode.WEEK: "#week-board",
+            ViewMode.MONTH: "#month-calendar",
+        }
+        self.query_one(focus_targets[self.mode]).focus()
 
     def _current_task(self) -> Task | None:
         active_table = f"{self.mode.value}-table"
@@ -244,6 +277,7 @@ class MainScreen(Screen[None]):
         if self.mode is ViewMode.MONTH:
             self.selected_month_day = self.anchor_date
         self._refresh_all()
+        self._focus_active_view()
 
     def action_add_task(self) -> None:
         default_date = self.selected_month_day if self.mode is ViewMode.MONTH else self.anchor_date
@@ -327,6 +361,10 @@ class MainScreen(Screen[None]):
         table_id = event.data_table.id or ""
         self.selected_task_id = self.task_ids.get(table_id, {}).get(str(event.row_key.value))
 
+    def on_week_board_task_cursor_changed(self, event: WeekBoard.TaskCursorChanged) -> None:
+        if event.task_id is not None:
+            self.selected_task_id = event.task_id
+
     def on_calendar_grid_day_selected(self, event: CalendarGrid.DaySelected) -> None:
         self.selected_month_day = event.day
         if event.day.month != self.anchor_date.month or event.day.year != self.anchor_date.year:
@@ -368,7 +406,7 @@ class MainScreen(Screen[None]):
 
 
 class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
-    BINDINGS = [("escape", "cancel", "Cancelar"), ("ctrl+s", "save", "Salvar")]
+    BINDINGS = [("escape", "cancel", "Cancelar"), ("s", "save", "Salvar"), ("ctrl+s", "save", "Salvar")]
 
     def __init__(self, service: TaskService, *, mode: ViewMode, default_date: date | None = None, task: Task | None = None) -> None:
         super().__init__()
@@ -407,7 +445,7 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
                     classes="fields-row",
                 ),
                 Static("────────────────────────────────────────", classes="modal-divider"),
-                Horizontal(Button("[ SALVAR ]", id="form-save", classes="primary-action"), Button("[ CANCELAR ]", id="form-cancel", classes="secondary-action"), classes="form-actions"),
+                Horizontal(Button(Text("[ Salvar ]"), id="form-save", classes="primary-action"), Button(Text("[ Cancelar ]"), id="form-cancel", classes="secondary-action"), classes="form-actions"),
                 id="form-card",
             ),
             id="form-overlay",
@@ -462,7 +500,7 @@ class ConfirmDeleteScreen(ModalScreen[int | None]):
             Static("Esta ação não pode ser desfeita.", classes="modal-subtitle"),
             Static(self.confirm_task.title, classes="confirm-task"),
             Static("Deseja realmente remover esta tarefa?", classes="confirm-question"),
-            Horizontal(Button("[ EXCLUIR ]", id="confirm-delete", classes="danger-action"), Button("[ CANCELAR ]", id="confirm-cancel", classes="secondary-action"), classes="form-actions"),
+            Horizontal(Button(Text("[ Excluir ]"), id="confirm-delete", classes="danger-action"), Button(Text("[ Cancelar ]"), id="confirm-cancel", classes="secondary-action"), classes="form-actions"),
             id="confirm-card",
         )
 
@@ -495,7 +533,7 @@ class FilterScreen(ModalScreen[TaskFilters | None]):
             Select([(item.value.capitalize(), item.value) for item in Priority], value=self.filters.priority.value if self.filters.priority else Select.NULL, allow_blank=True, prompt="Todas", id="filter-priority"),
             Static("STATUS", classes="field-label"),
             Select([(item.value.capitalize(), item.value) for item in Status], value=self.filters.status.value if self.filters.status else Select.NULL, allow_blank=True, prompt="Todos", id="filter-status"),
-            Horizontal(Button("[ APLICAR ]", id="filter-apply", classes="primary-action"), Button("[ CANCELAR ]", id="filter-cancel", classes="secondary-action"), classes="form-actions"),
+            Horizontal(Button(Text("[ Aplicar ]"), id="filter-apply", classes="primary-action"), Button(Text("[ Cancelar ]"), id="filter-cancel", classes="secondary-action"), classes="form-actions"),
             id="filter-card",
         )
 
@@ -535,7 +573,7 @@ class HelpScreen(ModalScreen[None]):
         for key, label in (("D / W / M", "alternar Dia, Semana ou Mês"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C", "concluir / reabrir tarefa"), ("X", "excluir com confirmação"), ("F", "filtrar por texto, categoria, prioridade e status"), ("N / B", "próximo / período anterior"), ("Q", "sair do DukieList")):
             text.append(f"{key:<10}", style="#ff38d1 bold")
             text.append(f" {label}\n", style="#d2def4")
-        yield Container(Static("?  ATALHOS DO DUKIELIST", classes="modal-title"), Static(text, classes="help-copy"), Button("[ FECHAR ]", id="help-close", classes="primary-action"), id="help-card")
+        yield Container(Static("?  ATALHOS DO DUKIELIST", classes="modal-title"), Static(text, classes="help-copy"), Button(Text("[ Fechar ]"), id="help-close", classes="primary-action"), id="help-card")
 
     def on_mount(self) -> None:
         self.query_one("#help-close", Button).focus()
