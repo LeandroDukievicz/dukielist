@@ -8,23 +8,23 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 128×4
 
 ### Tela inicial — escolha do modo
 
-![Tela inicial do DukieList](docs/screenshots/01-inicio.svg)
+![Tela inicial do DukieList](docs/screenshots/01-inicio.png)
 
 ### Visão diária
 
-![Visão diária do DukieList](docs/screenshots/02-dia.svg)
+![Visão diária do DukieList](docs/screenshots/02-dia.png)
 
 ### Visão semanal
 
-![Visão semanal do DukieList](docs/screenshots/03-semana.svg)
+![Visão semanal do DukieList](docs/screenshots/03-semana.png)
 
 ### Visão mensal
 
-![Calendário mensal do DukieList](docs/screenshots/04-mes.svg)
+![Calendário mensal do DukieList](docs/screenshots/04-mes.png)
 
 ### Modal de adicionar tarefa
 
-![Modal de adicionar tarefa](docs/screenshots/05-adicionar.svg)
+![Modal de adicionar tarefa](docs/screenshots/05-adicionar.png)
 
 ## O que pode ser feito
 
@@ -59,7 +59,7 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 128×4
 | `H` / `?` | Mostrar ajuda completa |
 | `Q` | Sair |
 
-Nos formulários, `CTRL+S` salva diretamente. Pressionar `ENTER` em um campo de texto também envia o formulário.
+Nos formulários, `S` ou `CTRL+S` salva diretamente. Pressionar `ENTER` em um campo de texto também envia o formulário.
 
 ## Requisitos no Ubuntu
 
@@ -67,6 +67,17 @@ Nos formulários, `CTRL+S` salva diretamente. Pressionar `ENTER` em um campo de 
 - Python 3.11 ou mais recente.
 - `python3-venv` e `python3-pip`.
 - Um terminal com suporte a UTF-8 e cores ANSI/TrueColor.
+
+## Baixar o projeto
+
+Com Git instalado, clone o repositório e entre na pasta:
+
+```bash
+git clone https://github.com/LeandroDukievicz/dukielist.git
+cd dukielist
+```
+
+Se você recebeu a pasta por ZIP ou já está trabalhando no diretório do projeto, pule esta seção.
 
 Instale os pacotes básicos:
 
