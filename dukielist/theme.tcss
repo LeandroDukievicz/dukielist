@@ -18,24 +18,25 @@ Button:hover, Button:focus {
     background: #123a65; color: #ffffff; border: round $cyan; text-style: bold;
 }
 #main-shell { width: 100%; height: 100%; padding: 0 1; border: round $line; }
-#welcome-chrome, #terminal-chrome {
+#welcome-title, #app-title {
     width: 100%; height: 2; padding: 0 1; border-bottom: solid $line;
+    content-align: center middle; text-align: center;
 }
-#brand-row { height: 7; width: 100%; }
-#brand-header { width: 1fr; height: 100%; padding: 0 1; content-align: left middle; }
+#header-row { height: 7; width: 100%; align: left middle; }
 #header-info {
     width: 36; height: 6; border: round $cyan; color: $cyan;
     background: $surface; content-align: center middle; text-align: center;
 }
 #workspace-row, #main-area { width: 1fr; height: 1fr; }
-#right-rail { width: 34; height: 100%; margin-left: 1; padding-top: 6; }
+#right-rail { width: 34; height: 100%; margin-left: 1; }
 #sidebar-scroll {
     height: 1fr; border: round $magenta; border-left: round $cyan;
     background: $surface; padding: 1;
 }
 #sidebar { height: auto; padding: 0 1; }
 #view-tabs {
-    height: 5; padding: 0 1; border: round $cyan; border-right: round $magenta;
+    width: 1fr; height: 5; margin-right: 1; padding: 0 1;
+    border: round $cyan; border-right: round $magenta;
     background: $surface; align: left middle;
 }
 .tabs-icon { width: 3; height: 3; color: $cyan; content-align: left middle; }
@@ -75,8 +76,7 @@ DataTable > .datatable--cursor { color: #ffffff; background: #064977; }
     display: none; width: 100%; height: 100%; border: round $cyan;
     color: $muted; content-align: center middle;
 }
-#month-view { min-height: 22; }
-#month-calendar { width: 100%; height: 100%; min-height: 22; padding: 0; }
+#month-calendar { width: 100%; height: 100%; padding: 0; }
 #progress-panel {
     height: 4; margin-top: 1; padding: 0 2; border: round $cyan;
     border-right: round $magenta; background: $surface;
@@ -95,22 +95,27 @@ DataTable > .datatable--cursor { color: #ffffff; background: #064977; }
 .narrow-layout #period-navigation, .narrow-layout #period-actions { width: 100%; height: 3; }
 .narrow-layout #period-actions { align: center middle; }
 .narrow-layout .footer-productivity, .narrow-layout .footer-infinity { display: none; }
-.short-layout #brand-row { height: 4; }
+.short-layout #header-row { height: 4; }
 .short-layout #header-info { height: 4; width: 31; }
 .short-layout #view-tabs { height: 3; border: none; }
 .short-layout #period-bar { margin-top: 0; }
 .short-layout #progress-panel { display: none; }
 .short-layout #app-footer { height: 1; }
+.narrow-layout #view-tabs { padding: 0; }
+.narrow-layout .tabs-icon, .narrow-layout .tabs-label { display: none; }
+.narrow-layout .view-tab { min-width: 11; width: 11; margin-right: 0; }
+
+/* O calendário usa toda a altura recuperada e sempre mostra o mês completo. */
+.mode-month #progress-panel { display: none; }
 
 /* Abertura: os cartões continuam acessíveis mesmo com pouca altura. */
 #welcome-shell { width: 100%; height: 100%; padding: 0 1; }
 #welcome-card {
-    width: 100%; height: auto; min-height: 26; margin-top: 2;
+    width: 100%; height: auto; min-height: 20; margin-top: 2;
     padding: 2 3; border: round $cyan; border-right: round $magenta;
     background: $surface; align: center middle;
 }
 .eyebrow { height: 1; color: $cyan; margin-bottom: 1; }
-.welcome-brand { height: 4; width: 100%; content-align: center middle; }
 .welcome-prompt { height: 2; color: #a9bee4; text-style: bold; content-align: center middle; }
 #mode-chooser { width: 100%; height: 8; align: center middle; }
 .mode-card {

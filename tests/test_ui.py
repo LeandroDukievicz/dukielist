@@ -1,8 +1,11 @@
+import calendar
 import tempfile
 import unittest
 from datetime import date, timedelta
+from io import StringIO
 from pathlib import Path
 
+from rich.console import Console
 from textual.widgets import Button, Input, Select
 from dukielist.app import DukieListApp
 from dukielist.models import Category, Priority, ViewMode
@@ -112,3 +115,26 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("enter")
             self.assertEqual(self.app.screen.mode, ViewMode.DAY)
             self.assertEqual(self.app.screen.anchor_date, selected)
+
+    async def test_six_week_month_fits_supported_heights(self):
+        async with self.app.run_test(size=(168, 52)) as pilot:
+            await pilot.press("enter", "m")
+            main = self.app.screen
+            main.anchor_date = main.selected_month_day = date(2026, 5, 1)
+            main._refresh_all()
+
+            for size in ((168, 52), (140, 44), (100, 36), (80, 30)):
+                with self.subTest(size=size):
+                    await pilot.resize_terminal(*size)
+                    await pilot.pause()
+                    grid = main.query_one(CalendarGrid)
+                    viewport = main.query_one("#views")
+                    output = StringIO()
+                    Console(file=output, width=grid.size.width, color_system=None).print(grid.render())
+                    self.assertEqual(len(grid.render().rows), 6)
+                    self.assertEqual(len(output.getvalue().splitlines()), grid.size.height)
+                    self.assertEqual(viewport.max_scroll_y, 0)
+                    self.assertEqual(
+                        len(calendar.Calendar(firstweekday=6).monthdatescalendar(grid.year, grid.month)),
+                        len(grid.render().rows),
+                    )

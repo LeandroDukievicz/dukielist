@@ -22,16 +22,15 @@ from textual.widgets import (
 from .models import Category, Priority, Status, Task, ViewMode, format_date, parse_date, parse_time
 from .services import TaskFilters, TaskService, month_bounds, shift_month, week_bounds
 from .widgets import (
+    AppTitle,
     DigitalClock,
     gradient_text,
-    BrandHeader,
     CalendarGrid,
     CommandPrompt,
     ModeCard,
     ProgressPanel,
     SidebarPanel,
     TaskTable,
-    TerminalChrome,
     WeekBoard,
 )
 
@@ -60,10 +59,9 @@ class WelcomeScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield VerticalScroll(
-            TerminalChrome(id="welcome-chrome"),
+            AppTitle(id="welcome-title"),
             Container(
                 Static("[ DUKIELIST / START ]", classes="eyebrow"),
-                BrandHeader(classes="welcome-brand"),
                 Static("Escolha uma visualização para começar", classes="welcome-prompt"),
                 Horizontal(
                     ModeCard("day", "DIA", "Tarefas de hoje", id="welcome-day", classes="mode-card"),
@@ -169,23 +167,22 @@ class MainScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield Container(
-            TerminalChrome(id="terminal-chrome"),
+            AppTitle(id="app-title"),
             Horizontal(
-                BrandHeader(id="brand-header"),
+                Horizontal(
+                    Static("▦", classes="tabs-icon"),
+                    Static("Visualização:", classes="tabs-label"),
+                    Button(Text("[ Dia ]"), id="mode-day", classes="view-tab"),
+                    Button(Text("[ Semana ]"), id="mode-week", classes="view-tab"),
+                    Button(Text("[ Mês ]"), id="mode-month", classes="view-tab"),
+                    Static("Use ← → para navegar e ENTER para confirmar", classes="tab-hint"),
+                    id="view-tabs",
+                ),
                 DigitalClock(id="header-info"),
-                id="brand-row",
+                id="header-row",
             ),
             Horizontal(
                 Vertical(
-                    Horizontal(
-                        Static("▦", classes="tabs-icon"),
-                        Static("Visualização:", classes="tabs-label"),
-                        Button(Text("[ Dia ]"), id="mode-day", classes="view-tab"),
-                        Button(Text("[ Semana ]"), id="mode-week", classes="view-tab"),
-                        Button(Text("[ Mês ]"), id="mode-month", classes="view-tab"),
-                        Static("Use ← → para navegar e ENTER para confirmar", classes="tab-hint"),
-                        id="view-tabs",
-                    ),
                     Horizontal(
                         Horizontal(
                             Button("‹", id="previous-period", classes="period-arrow"),
@@ -313,6 +310,7 @@ class MainScreen(Screen[None]):
         for mode in ViewMode:
             self.query_one(f"#mode-{mode.value}", Button).set_class(mode is self.mode, "active")
             self.query_one(f"#{mode.value}-view", Vertical).set_class(mode is self.mode, "active-view")
+            self.set_class(mode is self.mode, f"mode-{mode.value}")
 
     def _focus_active_view(self) -> None:
         focus_targets = {
@@ -493,19 +491,9 @@ class MainScreen(Screen[None]):
             self.call_after_refresh(self._reveal_calendar_selection)
 
     def _reveal_calendar_selection(self) -> None:
-        import calendar
-
-        grid = self.query_one(CalendarGrid)
-        weeks = calendar.Calendar(6).monthdatescalendar(grid.year, grid.month)
-        row = next(i for i, week in enumerate(weeks) if grid.selected_date in week)
-        cell_height = max(2, (grid.size.height - len(weeks) - 3) // len(weeks))
+        # O calendário é dimensionado para caber inteiro; sua origem permanece fixa.
         viewport = self.query_one("#views", VerticalScroll)
-        bottom = 3 + (row + 1) * (cell_height + 1)
-        top = 3 + row * (cell_height + 1)
-        if bottom > viewport.scroll_y + viewport.size.height:
-            viewport.scroll_to(y=bottom - viewport.size.height, animate=False)
-        elif top < viewport.scroll_y:
-            viewport.scroll_to(y=top, animate=False)
+        viewport.scroll_to(y=0, animate=False)
 
     def _on_form_result(self, result: dict[str, Any] | None) -> None:
         if not result:

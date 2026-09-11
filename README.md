@@ -41,9 +41,11 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 168 co
 - Navegar para o dia, a semana ou o mês anterior e seguinte.
 - Consultar percentual de conclusão, total, pendentes e distribuição por categoria.
 - Usar o calendário mensal para selecionar um dia e ver as tarefas daquele dia.
+- Manter a semana inteira visível, com barra de rolagem nas colunas que excederem o espaço disponível.
+- Ajustar o calendário à altura do terminal para que todos os dias do mês vigente permaneçam na tela.
 - Continuar vendo os dados após fechar e abrir o aplicativo: o SQLite é carregado automaticamente.
 
-O cabeçalho exibe um relógio **digital HH:MM:SS**, atualizado a cada segundo, com dígitos grandes e o dia da semana e a data logo abaixo. Usa o horário local da máquina. O relógio analógico e as frases motivacionais foram removidos.
+O topo exibe apenas o nome **DukieList** em degradê. Logo abaixo, as abas de visualização dividem a faixa com um relógio **digital HH:MM:SS**, atualizado a cada segundo, com o dia da semana e a data. Usa o horário local da máquina.
 
 A composição segue as referências: marca em gradiente, abas, painéis com bordas ciano/magenta, sete colunas semanais, calendário com divisórias e indicadores coloridos, barra de progresso em gradiente e formulários com campos alinhados. A aparência final depende da fonte e do suporte a cores do terminal; efeitos gráficos de brilho e tipografia dos mockups não são reproduzidos pixel a pixel em uma TUI.
 

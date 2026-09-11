@@ -72,46 +72,13 @@ def progress_render(progress: Progress, width: int = 34) -> Text:
     return result
 
 
-class TerminalChrome(Static):
-    """Barra superior que simula a janela de terminal das referências."""
+class AppTitle(Static):
+    """Nome compacto do produto exibido na faixa superior."""
 
     def render(self) -> Text:
-        traffic = "●  ●  ●"
-        host = "usuario@meu-pc: ~"
-        padding = max(3, ((self.size.width or 100) - len(traffic) - len(host)) // 2)
-        text = Text()
-        text.append("●", style="#ff4b5c")
-        text.append("  ●", style="#ffd447")
-        text.append("  ●", style="#35e56b")
-        text.append(" " * padding, style="")
-        text.append(host, style="#d4e0ff")
+        text = gradient_text("DukieList")
+        text.justify = "center"
         return text
-
-
-class BrandHeader(Static):
-    GLYPHS = {
-        "D": ("┏━╮", "┃ ┃", "┗━╯"), "u": ("   ", "╻ ╻", "╰━╯"),
-        "k": ("╻ ╱", "┣╱ ", "╹╲ "), "i": ("╹", "╻", "╹"),
-        "e": ("   ", "┏━┓", "┗━╸"), "L": ("╻  ", "┃  ", "┗━╸"),
-        "s": ("   ", "┏━╸", "╺━┛"), "t": ("╻  ", "┣━╸", "╰━╸"),
-    }
-
-    def render(self) -> Text:
-        if self.size.width >= 46 and self.size.height >= 3:
-            result = Text()
-            for row in range(3):
-                check = ("╭   ╮", "│ ✓ │", "╰   ╯")[row]
-                line = check + "  " + " ".join(self.GLYPHS[c][row] for c in "DukieList")
-                result.append_text(gradient_text(line))
-                result.append("\n")
-            result.append_text(gradient_text("       DukieList"))
-            return result
-        result = Text()
-        result.append("[", style="#00e5ff bold")
-        result.append("✓", style="#00e5ff bold")
-        result.append("] ", style="#ff38d1 bold")
-        result.append_text(gradient_text("DukieList"))
-        return result
 
 
 class DigitalClock(Static):
@@ -320,23 +287,39 @@ class CalendarGrid(Static):
         return self._render_calendar()
 
     def _render_calendar(self) -> Table:
-        table = Table(expand=True, show_edge=True, show_lines=True, box=box.SQUARE,
+        weeks = calendar.Calendar(firstweekday=6).monthdatescalendar(self.year, self.month)
+        available_height = self.size.height or 24
+        # Em alturas muito reduzidas, retirar apenas as linhas horizontais internas
+        # permite manter as seis semanas na tela sem esconder nenhum dia.
+        show_lines = available_height >= len(weeks) * 2 + len(weeks) + 3
+        fixed_height = 4 if not show_lines else len(weeks) + 3
+        data_height = max(len(weeks), available_height - fixed_height)
+        cell_height, extra_rows = divmod(data_height, len(weeks))
+        table = Table(expand=True, show_edge=True, show_lines=show_lines, box=box.SQUARE,
                       border_style="#24558d", header_style="bold #b8d7f7", padding=(0, 1))
         for heading in ("Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"):
             table.add_column(heading, justify="left", style="#b8cbea", ratio=1)
-        weeks = calendar.Calendar(firstweekday=6).monthdatescalendar(self.year, self.month)
-        cell_height = max(2, ((self.size.height or 24) - len(weeks) - 3) // len(weeks))
-        for week in weeks:
+        for week_index, week in enumerate(weeks):
+            row_height = cell_height + (1 if week_index < extra_rows else 0)
             cells: list[Text] = []
             for current in week:
                 in_month = current.month == self.month
                 tasks = self.tasks_by_day.get(current, [])
-                cell = Text(f"{current.day:02d}\n", style="#e8efff bold" if in_month else "#3e557a")
-                if current == self.selected_date:
-                    cell.append("▸ ", style="#00e5ff bold")
-                for task in tasks[:3]:
-                    cell.append("●", style=CATEGORY_COLORS[task.category.value])
-                cell.append("\n" * (cell_height - 2))
+                day_style = "#e8efff bold" if in_month else "#3e557a"
+                cell = Text(f"{current.day:02d}", style=day_style)
+                if row_height == 1:
+                    cell.append(" ")
+                    if current == self.selected_date:
+                        cell.append("▸", style="#00e5ff bold")
+                    for task in tasks[:3]:
+                        cell.append("●", style=CATEGORY_COLORS[task.category.value])
+                else:
+                    cell.append("\n")
+                    if current == self.selected_date:
+                        cell.append("▸ ", style="#00e5ff bold")
+                    for task in tasks[:3]:
+                        cell.append("●", style=CATEGORY_COLORS[task.category.value])
+                    cell.append("\n" * (row_height - 2))
                 if current == self.selected_date:
                     cell_width = max(4, (self.size.width - 8) // 7 - 2)
                     lines = cell.split("\n")
@@ -420,6 +403,22 @@ class WeekBoard(Static):
         if selected:
             cell.stylize("on #124b74", start, len(cell))
 
+    @staticmethod
+    def _scrollbar(total: int, capacity: int, offset: int, height: int) -> Text:
+        """Barra proporcional para a janela de tarefas visível em uma coluna."""
+        track_height = max(1, height)
+        thumb_height = max(1, round(track_height * capacity / total))
+        travel = track_height - thumb_height
+        max_offset = max(1, total - capacity)
+        thumb_start = round(travel * offset / max_offset)
+        bar = Text()
+        for row in range(track_height):
+            bar.append("█" if thumb_start <= row < thumb_start + thumb_height else "│",
+                       style="#00e5ff" if thumb_start <= row < thumb_start + thumb_height else "#24558d")
+            if row < track_height - 1:
+                bar.append("\n")
+        return bar
+
     def render(self) -> Table:
         return self._render_board()
 
@@ -444,13 +443,17 @@ class WeekBoard(Static):
                 cell.append("\n")
             if not tasks:
                 cell.append("Sem tarefas\n", style="#647fa6")
-            remaining = len(tasks) - offset - capacity
-            if remaining > 0:
-                cell.append(f"↓ +{remaining} tarefas", style="#9ab4dc")
+            content = cell
+            if len(tasks) > capacity:
+                content_grid = Table.grid(expand=True, padding=(0, 0))
+                content_grid.add_column(ratio=1)
+                content_grid.add_column(width=1)
+                content_grid.add_row(cell, self._scrollbar(len(tasks), capacity, offset, height - 4))
+                content = content_grid
             heading = Text(f"{names[index]}  {current:%d/%m}", style="bold #00e5ff")
             selected = index == self.day_index
             color = "#00e5ff" if selected else ("#a855f7" if index % 2 else "#466dc2")
-            panels.append(Panel(cell, title=heading, subtitle=Text("+ Adicionar", style="#ff4fd8"),
+            panels.append(Panel(content, title=heading, subtitle=Text("+ Adicionar", style="#ff4fd8"),
                                 border_style=color, box=box.ROUNDED, height=height,
                                 padding=(1, 1), style="on #0a1b31" if selected else "on #050d1d"))
         table.add_row(*panels)
@@ -464,16 +467,26 @@ class WeekBoard(Static):
             self.post_message(self.TaskCursorChanged(self._current_task_id()))
             event.stop()
         elif event.key in {"up", "down"}:
-            tasks = self._current_day_tasks()
-            if tasks:
-                delta = 1 if event.key == "down" else -1
-                self.task_index = (self.task_index + delta) % len(tasks)
-                self.update(self._render_board())
-                self.post_message(self.TaskCursorChanged(self._current_task_id()))
+            self._move_task_cursor(1 if event.key == "down" else -1)
             event.stop()
         elif event.key == "enter":
             self.post_message(self.TaskCursorChanged(self._current_task_id(), confirmed=True))
             event.stop()
+
+    def on_mouse_scroll_down(self, event) -> None:
+        self._move_task_cursor(1)
+        event.stop()
+
+    def on_mouse_scroll_up(self, event) -> None:
+        self._move_task_cursor(-1)
+        event.stop()
+
+    def _move_task_cursor(self, delta: int) -> None:
+        tasks = self._current_day_tasks()
+        if tasks:
+            self.task_index = (self.task_index + delta) % len(tasks)
+            self.update(self._render_board())
+            self.post_message(self.TaskCursorChanged(self._current_task_id()))
 
 
 class TaskTable(DataTable):

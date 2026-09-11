@@ -6,7 +6,7 @@ from pathlib import Path
 from dukielist.models import Category, Priority, Status, ViewMode
 from dukielist.services import TaskFilters, TaskService, month_bounds, shift_month, week_bounds
 from dukielist.storage import SQLiteStorage
-from dukielist.widgets import DigitalClock
+from dukielist.widgets import AppTitle, DigitalClock, WeekBoard
 
 
 class TaskServiceTest(unittest.TestCase):
@@ -72,6 +72,18 @@ class TaskServiceTest(unittest.TestCase):
             DigitalClock().render_time(datetime(2026, 9, 10, 23, 59, 58), compact=True))
         self.assertIn("23:59:58", output.getvalue())
         self.assertIn("Quinta-feira", output.getvalue())
+
+    def test_compact_title_and_week_scrollbar(self) -> None:
+        title = AppTitle().render()
+        self.assertEqual(title.plain, "DukieList")
+        self.assertNotIn("usuario@", title.plain)
+        self.assertGreater(len({str(span.style) for span in title.spans}), 1)
+
+        top = WeekBoard._scrollbar(total=9, capacity=3, offset=0, height=8).plain
+        bottom = WeekBoard._scrollbar(total=9, capacity=3, offset=6, height=8).plain
+        self.assertTrue(top.startswith("█"))
+        self.assertTrue(bottom.endswith("█"))
+        self.assertIn("│", top)
 
 
 if __name__ == "__main__":
