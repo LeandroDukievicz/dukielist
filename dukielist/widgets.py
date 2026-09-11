@@ -228,7 +228,10 @@ class AnalogClock(Static):
             for glyph, color in row:
                 text.append(glyph, style=color)
             text.append("\n")
-        text.append(f"{self._weekday_label(now)}  ·  {now:%H:%M:%S}", style="#dbe8ff bold")
+        text.append(f"{self._weekday_label(now)} {now:%H:%M:%S}", style="#dbe8ff bold")
+        text.append(" H", style=self._HOUR_COLOR + " bold")
+        text.append(" M", style=self._MINUTE_COLOR + " bold")
+        text.append(" S", style=self._SECOND_COLOR + " bold")
         return text
 
 
