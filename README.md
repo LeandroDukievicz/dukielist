@@ -4,7 +4,7 @@ O DukieList é uma todo list TUI (Terminal User Interface) para organizar tarefa
 
 ## Screenshots
 
-As imagens abaixo foram geradas a partir da aplicação em um terminal de 168×60 colunas usando dados de demonstração, seguindo a composição visual das referências.
+As imagens abaixo foram geradas a partir da aplicação em um terminal de 168 colunas × 52 linhas usando dados de demonstração, seguindo a composição visual das referências.
 
 ### Tela inicial — escolha do modo
 
@@ -43,15 +43,21 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 168×6
 - Usar o calendário mensal para selecionar um dia e ver as tarefas daquele dia.
 - Continuar vendo os dados após fechar e abrir o aplicativo: o SQLite é carregado automaticamente.
 
-O cabeçalho exibe um relógio analógico atualizado em tempo real. Os ponteiros de hora, minuto e segundo usam cores diferentes, e o dia da semana e o horário atual aparecem logo abaixo do mostrador. Em terminais estreitos, a barra de período separa a navegação das ações e oculta apenas os painéis auxiliares para preservar a lista de tarefas.
+O cabeçalho exibe um relógio **digital HH:MM:SS**, atualizado a cada segundo, com dígitos grandes e o dia da semana e a data logo abaixo. Usa o horário local da máquina. O relógio analógico e as frases motivacionais foram removidos.
+
+A composição segue as referências: marca em gradiente, abas, painéis com bordas ciano/magenta, sete colunas semanais, calendário com divisórias e indicadores coloridos, barra de progresso em gradiente e formulários com campos alinhados. A aparência final depende da fonte e do suporte a cores do terminal; efeitos gráficos de brilho e tipografia dos mockups não são reproduzidos pixel a pixel em uma TUI.
+
+Para o layout completo, use cerca de **168×52** ou mais. Também há navegação testada em **140×44, 100×36 e 80×30**. Em telas estreitas, a lateral é recolhida (a ajuda continua em `H`), a semana acompanha o dia selecionado mostrando três ou uma coluna, e formulários/calendário usam rolagem. Em telas baixas, o relógio é compacto e o progresso é ocultado para preservar as tarefas. Redimensionar não modifica seus dados.
+
+No modo Semana, `← →` escolhem o dia e `↑ ↓` percorrem todas as tarefas — inclusive as que não cabem de uma vez. `A` cria no dia selecionado; `ENTER` edita a tarefa ou abre a criação se o dia estiver vazio. No calendário, `ENTER` abre a lista do dia selecionado. Nas abas, use `TAB` para focar, `← →` para escolher e `ENTER` para confirmar.
 
 ## Atalhos
 
 | Tecla | Ação |
 | --- | --- |
-| `D` | Modo Dia; no modo Dia, deleta a tarefa selecionada |
+| `D` | Modo Dia |
 | `W` | Modo Semana |
-| `M` | Modo Mês; no modo Mês, avança para o próximo mês |
+| `M` | Modo Mês |
 | `A` | Adicionar tarefa |
 | `E` | Editar tarefa selecionada |
 | `C` | Concluir ou reabrir tarefa |
@@ -60,7 +66,7 @@ O cabeçalho exibe um relógio analógico atualizado em tempo real. Os ponteiros
 | `F` / `P` | Filtrar por categoria / prioridade |
 | `L` | Limpar tarefas concluídas do período |
 | `V` | Ver tarefas; limpa filtros ativos |
-| `N` / `B` | Navegar período; no mês, `N` volta um mês |
+| `N` / `B` | Próximo período / período anterior, em todos os modos |
 | `↑ ↓ ← →` | Mover seleção; no calendário, mover o dia |
 | `TAB` / `SHIFT+TAB` | Avançar ou voltar o foco entre controles |
 | `ENTER` | Selecionar, abrir ou confirmar |
@@ -68,11 +74,11 @@ O cabeçalho exibe um relógio analógico atualizado em tempo real. Os ponteiros
 | `H` / `?` | Mostrar ajuda completa |
 | `Q` | Sair |
 
-Nos formulários, `S` ou `CTRL+S` salva diretamente. Pressionar `ENTER` em um campo de texto também envia o formulário.
+Nos formulários, `CTRL+S` salva de qualquer campo; `S` também salva quando o foco não está em um campo de texto. Pressionar `ENTER` em um campo de texto também envia o formulário.
 
 ## Requisitos no Ubuntu
 
-- Ubuntu 22.04 ou mais recente.
+- Ubuntu 24.04 ou mais recente para os comandos de instalação abaixo (em versões anteriores, instale primeiro Python 3.11+).
 - Python 3.11 ou mais recente.
 - `python3-venv` e `python3-pip`.
 - Um terminal com suporte a UTF-8 e cores ANSI/TrueColor.
@@ -92,15 +98,15 @@ Instale os pacotes básicos:
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-venv python3-pip
+sudo apt install -y git python3 python3-venv python3-pip
 ```
 
 ## Instalação a partir da pasta baixada
 
-Se o projeto estiver em `/home/leandro-dukievicz/Projetos/dukielist`:
+Dentro da pasta clonada:
 
 ```bash
-cd /home/leandro-dukievicz/Projetos/dukielist
+cd dukielist  # omita se já estiver dentro da pasta clonada
 chmod +x scripts/install.sh
 ./scripts/install.sh
 ```
@@ -116,7 +122,7 @@ export PATH="$HOME/.local/bin:$PATH"
 Para instalar manualmente, sem o script:
 
 ```bash
-cd /home/leandro-dukievicz/Projetos/dukielist
+cd dukielist  # omita se já estiver na pasta
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
@@ -180,8 +186,13 @@ dukielist/
 │   ├── widgets.py        # tabela, calendário, resumo, relógio e branding
 │   └── theme.tcss        # tema cyberpunk e layout responsivo
 ├── docs/screenshots/     # screenshots documentados acima
-├── tests/test_core.py    # testes do CRUD e períodos
-├── scripts/install.sh    # instalação e atalhos locais
+├── tests/
+│   ├── test_core.py      # CRUD, períodos e relógio digital
+│   ├── test_storage.py   # fechamento de conexões e rollback SQLite
+│   └── test_ui.py        # navegação, formulários e geometria responsiva
+├── scripts/
+│   ├── install.sh        # instalação e atalhos locais
+│   └── screenshots.py    # capturas reais com banco de demonstração temporário
 ├── main.py               # entry point alternativo
 ├── pyproject.toml        # empacotamento e comando dukielist
 ├── requirements.txt      # dependência direta
@@ -197,5 +208,21 @@ cd /home/leandro-dukievicz/Projetos/dukielist
 .venv/bin/python -m compileall -q dukielist
 .venv/bin/python -m unittest discover -s tests -v
 ```
+
+Os testes usam bancos temporários e não acessam suas tarefas pessoais.
+
+Para regenerar os prints reais (SVG):
+
+```bash
+env -u NO_COLOR .venv/bin/python scripts/screenshots.py
+```
+
+Para gerar também PNG, tenha Chrome ou Chromium instalado:
+
+```bash
+env -u NO_COLOR .venv/bin/python scripts/screenshots.py --png
+```
+
+A captura navega pelas seis telas e verifica que os modais foram abertos antes de exportar. Chrome/Chromium só é necessário para gerar os PNGs, nunca para usar o DukieList.
 
 O projeto não precisa de servidor, conta externa ou conexão com a internet depois que a dependência é instalada.
