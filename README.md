@@ -43,6 +43,8 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 168×6
 - Usar o calendário mensal para selecionar um dia e ver as tarefas daquele dia.
 - Continuar vendo os dados após fechar e abrir o aplicativo: o SQLite é carregado automaticamente.
 
+O cabeçalho exibe um relógio analógico atualizado em tempo real. Os ponteiros de hora, minuto e segundo usam cores diferentes, e o dia da semana e o horário atual aparecem logo abaixo do mostrador. Em terminais estreitos, a barra de período separa a navegação das ações e oculta apenas os painéis auxiliares para preservar a lista de tarefas.
+
 ## Atalhos
 
 | Tecla | Ação |
@@ -175,7 +177,7 @@ dukielist/
 │   ├── services.py       # regras de negócio, filtros e progresso
 │   ├── screens.py        # tela inicial, workspace e modais
 │   ├── storage.py        # schema e CRUD SQLite
-│   ├── widgets.py        # tabela, calendário, resumo e branding
+│   ├── widgets.py        # tabela, calendário, resumo, relógio e branding
 │   └── theme.tcss        # tema cyberpunk e layout responsivo
 ├── docs/screenshots/     # screenshots documentados acima
 ├── tests/test_core.py    # testes do CRUD e períodos
