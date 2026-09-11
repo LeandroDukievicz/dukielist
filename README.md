@@ -4,7 +4,7 @@ O DukieList é uma todo list TUI (Terminal User Interface) para organizar tarefa
 
 ## Screenshots
 
-As imagens abaixo foram geradas a partir da aplicação em um terminal de 128×44 colunas usando dados de demonstração.
+As imagens abaixo foram geradas a partir da aplicação em um terminal de 168×60 colunas usando dados de demonstração, seguindo a composição visual das referências.
 
 ### Tela inicial — escolha do modo
 
@@ -26,6 +26,10 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 128×4
 
 ![Modal de adicionar tarefa](docs/screenshots/05-adicionar.png)
 
+### Modal de editar tarefa
+
+![Modal de editar tarefa](docs/screenshots/06-editar.png)
+
 ## O que pode ser feito
 
 - Escolher Dia, Semana ou Mês na abertura e trocar de modo a qualquer momento.
@@ -33,7 +37,7 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 128×4
 - Editar qualquer tarefa selecionada e alterar todos os seus campos.
 - Concluir e reabrir tarefas.
 - Excluir tarefas com confirmação.
-- Filtrar por texto, categoria, prioridade e status; usar `F` novamente para trocar ou limpar os filtros.
+- Filtrar por texto, categoria, prioridade e status; usar `V` para limpar filtros e ver todas as tarefas.
 - Navegar para o dia, a semana ou o mês anterior e seguinte.
 - Consultar percentual de conclusão, total, pendentes e distribuição por categoria.
 - Usar o calendário mensal para selecionar um dia e ver as tarefas daquele dia.
@@ -43,15 +47,18 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 128×4
 
 | Tecla | Ação |
 | --- | --- |
-| `D` | Modo Dia |
+| `D` | Modo Dia; no modo Dia, deleta a tarefa selecionada |
 | `W` | Modo Semana |
-| `M` | Modo Mês |
+| `M` | Modo Mês; no modo Mês, avança para o próximo mês |
 | `A` | Adicionar tarefa |
 | `E` | Editar tarefa selecionada |
 | `C` | Concluir ou reabrir tarefa |
-| `X` | Excluir tarefa com confirmação |
-| `F` | Abrir filtros |
-| `N` / `B` | Próximo / período anterior |
+| `S` / `U` | Marcar como concluída / desmarcar |
+| `X` / `DELETE` | Excluir tarefa com confirmação |
+| `F` / `P` | Filtrar por categoria / prioridade |
+| `L` | Limpar tarefas concluídas do período |
+| `V` | Ver tarefas; limpa filtros ativos |
+| `N` / `B` | Navegar período; no mês, `N` volta um mês |
 | `↑ ↓ ← →` | Mover seleção; no calendário, mover o dia |
 | `TAB` / `SHIFT+TAB` | Avançar ou voltar o foco entre controles |
 | `ENTER` | Selecionar, abrir ou confirmar |
