@@ -6,6 +6,10 @@ from typing import Iterable
 
 from rich import box
 from rich.table import Table
+from rich.panel import Panel
+from rich.console import Group
+from textual.renderables.digits import Digits
+from rich.align import Align
 from rich.text import Text
 from textual.message import Message
 from textual.widgets import DataTable, Static
@@ -59,10 +63,11 @@ def progress_render(progress: Progress, width: int = 34) -> Text:
     result = Text()
     for index in range(width):
         if index < filled:
-            ratio = index / max(width - 1, 1)
-            result.append("█", style="#00e5ff" if ratio < 0.5 else "#ff2ec4")
+            ratio = index / max(filled - 1, 1)
+            red, green, blue = round(255 * ratio), round(229 - 183 * ratio), round(255 - 59 * ratio)
+            result.append("▉ ", style=f"rgb({red},{green},{blue})")
         else:
-            result.append("█", style="#152853")
+            result.append("▉ ", style="#152853")
     result.append(f"  {progress.completed}/{progress.total}  ({progress.percent}%)", style="#d7e4ff")
     return result
 
@@ -84,7 +89,23 @@ class TerminalChrome(Static):
 
 
 class BrandHeader(Static):
+    GLYPHS = {
+        "D": ("┏━╮", "┃ ┃", "┗━╯"), "u": ("   ", "╻ ╻", "╰━╯"),
+        "k": ("╻ ╱", "┣╱ ", "╹╲ "), "i": ("╹", "╻", "╹"),
+        "e": ("   ", "┏━┓", "┗━╸"), "L": ("╻  ", "┃  ", "┗━╸"),
+        "s": ("   ", "┏━╸", "╺━┛"), "t": ("╻  ", "┣━╸", "╰━╸"),
+    }
+
     def render(self) -> Text:
+        if self.size.width >= 46 and self.size.height >= 3:
+            result = Text()
+            for row in range(3):
+                check = ("╭   ╮", "│ ✓ │", "╰   ╯")[row]
+                line = check + "  " + " ".join(self.GLYPHS[c][row] for c in "DukieList")
+                result.append_text(gradient_text(line))
+                result.append("\n")
+            result.append_text(gradient_text("       DukieList"))
+            return result
         result = Text()
         result.append("[", style="#00e5ff bold")
         result.append("✓", style="#00e5ff bold")
@@ -93,146 +114,24 @@ class BrandHeader(Static):
         return result
 
 
-class AnalogClock(Static):
-    """Relógio analógico que redesenha os três ponteiros a cada segundo."""
+class DigitalClock(Static):
+    """Horário local em dígitos grandes, com atualização a cada segundo."""
 
-    _WIDTH = 15
-    _HEIGHT = 7
-    _CENTER = (7, 3)
-    _HOUR_COLOR = "#ff38d1"
-    _MINUTE_COLOR = "#00e5ff"
-    _SECOND_COLOR = "#ff4fd8"
+    WEEKDAYS = ("Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira",
+                "Sexta-feira", "Sábado", "Domingo")
 
     def on_mount(self) -> None:
-        self.set_interval(1, self._tick)
+        self.set_interval(1, self.refresh)
 
-    def _tick(self) -> None:
-        self.refresh()
+    def render_time(self, now: datetime, *, compact: bool = False):
+        weekday = self.WEEKDAYS[now.weekday()]
+        caption = Text(f"{weekday} · {now:%d/%m/%Y}", style="#b8d7f7", justify="center")
+        if compact:
+            return Group(Text(f"{now:%H:%M:%S}", style="bold #00e5ff", justify="center"), caption)
+        return Group(Align.center(Digits(f"{now:%H:%M:%S}", style="bold #00e5ff")), caption)
 
-    @classmethod
-    def _hand_endpoint(
-        cls, angle: float, radius_x: float, radius_y: float, center: tuple[int, int] | None = None
-    ) -> tuple[int, int]:
-        from math import cos, radians, sin
-
-        center = center or cls._CENTER
-        return (
-            round(center[0] + sin(radians(angle)) * radius_x),
-            round(center[1] - cos(radians(angle)) * radius_y),
-        )
-
-    @classmethod
-    def _draw_hand(
-        cls,
-        grid: list[list[tuple[str, str]]],
-        endpoint: tuple[int, int],
-        color: str,
-        center: tuple[int, int] | None = None,
-    ) -> None:
-        x0, y0 = center or cls._CENTER
-        x1, y1 = endpoint
-        steps = max(abs(x1 - x0), abs(y1 - y0)) * 3 or 1
-        previous = (x0, y0)
-        for step in range(1, steps + 1):
-            x = round(x0 + (x1 - x0) * step / steps)
-            y = round(y0 + (y1 - y0) * step / steps)
-            if (x, y) == previous:
-                continue
-            if x == previous[0]:
-                glyph = "│"
-            elif y == previous[1]:
-                glyph = "─"
-            elif (x - previous[0]) * (y - previous[1]) < 0:
-                glyph = "╱"
-            else:
-                glyph = "╲"
-            if 0 <= y < len(grid) and 0 <= x < len(grid[0]):
-                grid[y][x] = (glyph, color)
-            previous = (x, y)
-
-    @staticmethod
-    def _weekday_label(now: datetime) -> str:
-        return ("SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM")[now.weekday()]
-
-    def render(self) -> Text:
-        now = datetime.now()
-        # ``size.height`` excludes bordas; o cabeçalho grande possui nove linhas úteis.
-        if (self.size.height or 9) < 8:
-            return self._render_compact(now)
-
-        grid = [[("·", "#24558d") for _ in range(self._WIDTH)] for _ in range(self._HEIGHT)]
-
-        # Marcações cardeais e intermediárias do mostrador.
-        marks = {
-            (7, 0): ("12", "#dbe8ff"),
-            (10, 1): ("1", "#7891b8"),
-            (12, 3): ("3", "#dbe8ff"),
-            (10, 5): ("5", "#7891b8"),
-            (7, 6): ("6", "#dbe8ff"),
-            (4, 5): ("7", "#7891b8"),
-            (1, 3): ("9", "#dbe8ff"),
-            (4, 1): ("11", "#7891b8"),
-        }
-        for (x, y), value in marks.items():
-            glyph, color = value
-            for offset, char in enumerate(glyph):
-                if 0 <= x + offset < self._WIDTH:
-                    grid[y][x + offset] = (char, color)
-
-        # Horário contínuo: hora inclui a fração dos minutos.
-        hour_angle = (now.hour % 12 + now.minute / 60) * 30
-        minute_angle = (now.minute + now.second / 60) * 6
-        second_angle = now.second * 6
-        self._draw_hand(grid, self._hand_endpoint(hour_angle, 3.0, 1.7), self._HOUR_COLOR)
-        self._draw_hand(grid, self._hand_endpoint(minute_angle, 4.5, 2.5), self._MINUTE_COLOR)
-        self._draw_hand(grid, self._hand_endpoint(second_angle, 5.2, 2.8), self._SECOND_COLOR)
-        grid[self._CENTER[1]][self._CENTER[0]] = ("●", "#ffffff")
-
-        text = Text()
-        for row in grid:
-            for glyph, color in row:
-                text.append(glyph, style=color)
-            text.append("\n")
-        text.append(f"{self._weekday_label(now)}  ·  {now:%H:%M:%S}", style="#dbe8ff bold")
-        text.append("\nH", style=self._HOUR_COLOR + " bold")
-        text.append("  M", style=self._MINUTE_COLOR + " bold")
-        text.append("  S", style=self._SECOND_COLOR + " bold")
-        return text
-
-    def _render_compact(self, now: datetime) -> Text:
-        """Versão reduzida para terminais baixos, mantendo dia da semana e os três ponteiros."""
-        width, height = 15, 5
-        center = (7, 2)
-        grid = [[("·", "#24558d") for _ in range(width)] for _ in range(height)]
-        marks = {
-            (7, 0): ("12", "#dbe8ff"),
-            (1, 2): ("9", "#dbe8ff"),
-            (12, 2): ("3", "#dbe8ff"),
-            (7, 4): ("6", "#dbe8ff"),
-        }
-        for (x, y), (glyph, color) in marks.items():
-            for offset, char in enumerate(glyph):
-                if 0 <= x + offset < width:
-                    grid[y][x + offset] = (char, color)
-
-        hour_angle = (now.hour % 12 + now.minute / 60) * 30
-        minute_angle = (now.minute + now.second / 60) * 6
-        second_angle = now.second * 6
-        self._draw_hand(grid, self._hand_endpoint(hour_angle, 2.5, 1.1, center), self._HOUR_COLOR, center)
-        self._draw_hand(grid, self._hand_endpoint(minute_angle, 4.0, 1.7, center), self._MINUTE_COLOR, center)
-        self._draw_hand(grid, self._hand_endpoint(second_angle, 5.0, 1.9, center), self._SECOND_COLOR, center)
-        grid[center[1]][center[0]] = ("●", "#ffffff")
-
-        text = Text()
-        for row in grid:
-            for glyph, color in row:
-                text.append(glyph, style=color)
-            text.append("\n")
-        text.append(f"{self._weekday_label(now)} {now:%H:%M:%S}", style="#dbe8ff bold")
-        text.append(" H", style=self._HOUR_COLOR + " bold")
-        text.append(" M", style=self._MINUTE_COLOR + " bold")
-        text.append(" S", style=self._SECOND_COLOR + " bold")
-        return text
+    def render(self):
+        return self.render_time(datetime.now(), compact=0 < self.size.height < 4)
 
 
 class CommandPrompt(Static):
@@ -287,7 +186,7 @@ class ProgressPanel(Static):
         self.update(self._render_progress())
 
     def _render_progress(self) -> Text:
-        width = max(18, min(44, (self.size.width or 100) - 42))
+        width = max(6, min(44, ((self.size.width or 100) - 24) // 2))
         line = Text()
         line.append("▸ ", style="#00e5ff bold")
         line.append(self.label, style="#9fdcff bold")
@@ -322,7 +221,7 @@ class SidebarPanel(Static):
         if mode == ViewMode.DAY.value:
             return [
                 ("a", "Adicionar tarefa"), ("c", "Concluir tarefa"),
-                ("d", "Deletar tarefa"), ("e", "Editar tarefa"),
+                ("x", "Deletar tarefa"), ("e", "Editar tarefa"),
                 ("v", "Ver todas as tarefas"), ("f", "Filtrar por categoria"),
                 ("p", "Filtrar por prioridade"), ("l", "Limpar concluídas"),
                 ("h", "Mostrar ajuda"), ("q", "Sair"),
@@ -330,15 +229,15 @@ class SidebarPanel(Static):
         if mode == ViewMode.WEEK.value:
             return [
                 ("a", "Adicionar tarefa"), ("e", "Editar tarefa"),
-                ("d", "Deletar tarefa"), ("v", "Ver tarefa"),
+                ("x", "Deletar tarefa"), ("v", "Ver tarefa"),
                 ("s", "Marcar como concluída"), ("u", "Desmarcar tarefa"),
                 ("n", "Ir para próxima semana"), ("b", "Ir para semana anterior"),
                 ("h", "Mostrar ajuda"), ("q", "Sair"),
             ]
         return [
             ("a", "Adicionar tarefa (no dia)"), ("e", "Editar tarefa (do dia)"),
-            ("v", "Ver tarefas do dia"), ("n", "Mês anterior"),
-            ("m", "Próximo mês"), ("h", "Mostrar ajuda"), ("q", "Sair"),
+            ("v", "Ver tarefas do dia"), ("b", "Mês anterior"),
+            ("n", "Próximo mês"), ("h", "Mostrar ajuda"), ("q", "Sair"),
         ]
 
     def _render_sidebar(self) -> Text:
@@ -394,8 +293,9 @@ class SidebarPanel(Static):
 
 class CalendarGrid(Static):
     class DaySelected(Message):
-        def __init__(self, day: date) -> None:
+        def __init__(self, day: date, confirmed: bool = False) -> None:
             self.day = day
+            self.confirmed = confirmed
             super().__init__()
 
     can_focus = True
@@ -414,28 +314,37 @@ class CalendarGrid(Static):
         self.tasks_by_day = {}
         for task in tasks:
             self.tasks_by_day.setdefault(task.task_date, []).append(task)
-        self.update(self._render_calendar())
+        self.refresh()
+
+    def render(self) -> Table:
+        return self._render_calendar()
 
     def _render_calendar(self) -> Table:
-        table = Table(expand=True, show_edge=True, box=box.SQUARE, padding=(0, 1))
+        table = Table(expand=True, show_edge=True, show_lines=True, box=box.SQUARE,
+                      border_style="#24558d", header_style="bold #b8d7f7", padding=(0, 1))
         for heading in ("Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"):
             table.add_column(heading, justify="left", style="#b8cbea", ratio=1)
         weeks = calendar.Calendar(firstweekday=6).monthdatescalendar(self.year, self.month)
+        cell_height = max(2, ((self.size.height or 24) - len(weeks) - 3) // len(weeks))
         for week in weeks:
             cells: list[Text] = []
             for current in week:
                 in_month = current.month == self.month
                 tasks = self.tasks_by_day.get(current, [])
                 cell = Text(f"{current.day:02d}\n", style="#e8efff bold" if in_month else "#3e557a")
-                if current == date.today():
-                    cell.append("hoje\n", style="#00e5ff bold")
-                else:
-                    cell.append("\n")
+                if current == self.selected_date:
+                    cell.append("▸ ", style="#00e5ff bold")
                 for task in tasks[:3]:
                     cell.append("●", style=CATEGORY_COLORS[task.category.value])
+                cell.append("\n" * (cell_height - 2))
                 if current == self.selected_date:
+                    cell_width = max(4, (self.size.width - 8) // 7 - 2)
+                    lines = cell.split("\n")
+                    for line in lines:
+                        line.pad_right(max(0, cell_width - line.cell_len))
+                    cell = Text("\n").join(lines)
                     cell.stylize("on #123a65")
-                    cell.stylize("#ffffff bold")
+                    cell.stylize("bold")
                 cells.append(cell)
             table.add_row(*cells)
         return table
@@ -451,7 +360,7 @@ class CalendarGrid(Static):
         elif event.key == "down":
             step = 7
         elif event.key == "enter":
-            self.post_message(self.DaySelected(self.selected_date))
+            self.post_message(self.DaySelected(self.selected_date, confirmed=True))
             event.stop()
             return
         if step is not None:
@@ -464,8 +373,9 @@ class CalendarGrid(Static):
 
 class WeekBoard(Static):
     class TaskCursorChanged(Message):
-        def __init__(self, task_id: int | None) -> None:
+        def __init__(self, task_id: int | None, confirmed: bool = False) -> None:
             self.task_id = task_id
+            self.confirmed = confirmed
             super().__init__()
 
     can_focus = True
@@ -485,7 +395,7 @@ class WeekBoard(Static):
         self.day_index = min(max(self.day_index, 0), 6)
         current_tasks = self._current_day_tasks()
         self.task_index = min(self.task_index, max(len(current_tasks) - 1, 0))
-        self.update(self._render_board())
+        self.refresh()
 
     def _current_day_tasks(self) -> list[Task]:
         return self.tasks_by_day.get(self.start + timedelta(days=self.day_index), [])
@@ -494,48 +404,56 @@ class WeekBoard(Static):
         tasks = self._current_day_tasks()
         return tasks[self.task_index].id if tasks and self.task_index < len(tasks) else None
 
-    @staticmethod
-    def _task_line(cell: Text, task: Task, selected: bool) -> None:
+    def _task_line(self, cell: Text, task: Task, selected: bool) -> None:
         start = len(cell)
         marker = "[✓]" if task.completed else "[ ]"
         title_style = "#7b8dad strike" if task.completed else "#e5edff"
-        cell.append(f"{marker} {task.title[:19]}\n", style=title_style)
+        from textwrap import wrap
+
+        column_width = max(10, (self.size.width // (7 if self.size.width >= 112 else 3 if self.size.width >= 65 else 1)) - 5)
+        title = "\n".join(wrap(f"{marker} {task.title}", column_width)[:2])
+        cell.append(title + "\n", style=title_style)
+        cell.stylize("#39ff14" if task.completed else "#dbe8ff", start, start + 3)
         cell.append(f"{task.priority.value.capitalize()}", style=PRIORITY_COLORS[task.priority.value])
         cell.append(" | ", style="#7390b9")
-        cell.append(f"{task.category.value.capitalize()}\n", style=CATEGORY_COLORS[task.category.value])
+        cell.append(task.category.value.capitalize() + "\n", style=CATEGORY_COLORS[task.category.value])
         if selected:
             cell.stylize("on #124b74", start, len(cell))
 
-    def _render_board(self) -> Table:
-        table = Table(expand=True, show_edge=True, box=box.ROUNDED, padding=(0, 1))
-        day_names = ("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
-        for index, name in enumerate(day_names):
-            style = "#ff38d1 bold" if index == 6 else "#00e5ff bold"
-            table.add_column(name, style=style, ratio=1)
+    def render(self) -> Table:
+        return self._render_board()
 
-        cells: list[Text] = []
-        for index, name in enumerate(day_names):
+    def _render_board(self) -> Table:
+        # Em telas estreitas acompanhamos o dia selecionado, sem comprimir sete colunas.
+        width = self.size.width or 140
+        visible = 7 if width >= 112 else 3 if width >= 65 else 1
+        first = min(max(self.day_index - visible // 2, 0), 7 - visible)
+        height = max(10, self.size.height or 24)
+        capacity = max(1, (height - 6) // 5)
+        table = Table.grid(expand=True, padding=(0, 0))
+        names = ("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
+        panels = []
+        for index in range(first, first + visible):
+            table.add_column(ratio=1)
             current = self.start + timedelta(days=index)
-            day_tasks = self.tasks_by_day.get(current, [])
-            header_style = "#ff38d1 bold" if index == 6 else "#00e5ff bold"
-            cell = Text(f"{name}  {current:%d/%m}\n", style=header_style)
-            cell.append("─" * 13 + "\n", style="#245a91")
-            if current == date.today():
-                cell.append("HOJE\n", style="#00e5ff bold")
-            else:
+            tasks = self.tasks_by_day.get(current, [])
+            offset = max(0, self.task_index - capacity + 1) if index == self.day_index else 0
+            cell = Text()
+            for position, task in enumerate(tasks[offset:offset + capacity], offset):
+                self._task_line(cell, task, index == self.day_index and position == self.task_index)
                 cell.append("\n")
-            if not day_tasks:
-                cell.append("—\n", style="#5f789d")
-            for task_position, task in enumerate(day_tasks[:5]):
-                self._task_line(cell, task, index == self.day_index and task_position == self.task_index)
-            if len(day_tasks) > 5:
-                cell.append(f"+ {len(day_tasks) - 5} tarefas\n", style="#91a7cc")
-            cell.append("\n" + "─" * 13 + "\n", style="#ff38d1")
-            cell.append("+ Adicionar tarefa", style="#ff65d9")
-            if index == self.day_index:
-                cell.stylize("on #0b2b4c")
-            cells.append(cell)
-        table.add_row(*cells)
+            if not tasks:
+                cell.append("Sem tarefas\n", style="#647fa6")
+            remaining = len(tasks) - offset - capacity
+            if remaining > 0:
+                cell.append(f"↓ +{remaining} tarefas", style="#9ab4dc")
+            heading = Text(f"{names[index]}  {current:%d/%m}", style="bold #00e5ff")
+            selected = index == self.day_index
+            color = "#00e5ff" if selected else ("#a855f7" if index % 2 else "#466dc2")
+            panels.append(Panel(cell, title=heading, subtitle=Text("+ Adicionar", style="#ff4fd8"),
+                                border_style=color, box=box.ROUNDED, height=height,
+                                padding=(1, 1), style="on #0a1b31" if selected else "on #050d1d"))
+        table.add_row(*panels)
         return table
 
     def on_key(self, event) -> None:
@@ -554,7 +472,7 @@ class WeekBoard(Static):
                 self.post_message(self.TaskCursorChanged(self._current_task_id()))
             event.stop()
         elif event.key == "enter":
-            self.post_message(self.TaskCursorChanged(self._current_task_id()))
+            self.post_message(self.TaskCursorChanged(self._current_task_id(), confirmed=True))
             event.stop()
 
 

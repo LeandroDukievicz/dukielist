@@ -1,5 +1,5 @@
-$bg: #050918;
-$surface: #071126;
+$bg: #050b16;
+$surface: #071222;
 $line: #24558d;
 $cyan: #00e5ff;
 $magenta: #ff2ec4;
@@ -7,792 +7,169 @@ $muted: #7891b8;
 $text: #dbe8ff;
 
 Screen {
-    background: $bg;
-    color: $text;
-    scrollbar-background: #071126;
-    scrollbar-color: #24518a;
-    scrollbar-size: 1 1;
+    background: $bg; color: $text;
+    scrollbar-background: $surface; scrollbar-color: $line; scrollbar-size: 1 1;
 }
-
 Button {
-    background: #0a1832;
-    color: $text;
-    border: round #24558d;
-    height: 3;
-    min-width: 12;
-    padding: 0 2;
+    background: #091628; color: $text; border: round $line;
+    height: 3; min-width: 12; padding: 0 1;
 }
-
 Button:hover, Button:focus {
-    background: #123a65;
-    color: #ffffff;
-    border: round $cyan;
+    background: #123a65; color: #ffffff; border: round $cyan; text-style: bold;
 }
-
-/* Tela inicial */
-#welcome-shell {
-    width: 100%;
-    height: 100%;
-    padding: 0 1;
-}
-
+#main-shell { width: 100%; height: 100%; padding: 0 1; border: round $line; }
 #welcome-chrome, #terminal-chrome {
-    width: 100%;
-    height: 2;
-    padding: 0 1;
-    color: $text;
-    border-bottom: solid #1a518c;
-    content-align: left middle;
+    width: 100%; height: 2; padding: 0 1; border-bottom: solid $line;
 }
-
-#welcome-card {
-    width: 90%;
-    height: 1fr;
-    margin: 4 5;
-    padding: 2 5;
-    border: round $cyan;
-    background: $surface;
-    align: center middle;
-}
-
-.compact-layout #welcome-card {
-    width: 96%;
-    margin: 2 2;
-    padding: 2;
-}
-
-.compact-layout #mode-chooser {
-    height: auto;
-    layout: vertical;
-    align: center middle;
-}
-
-.compact-layout .mode-card {
-    width: 100%;
-    height: 6;
-    margin: 1 0;
-}
-
-.narrow-layout #welcome-card {
-    width: 100%;
-    margin: 1 0;
-    padding: 1;
-}
-
-.eyebrow {
-    color: $cyan;
-    text-style: bold;
-    margin-bottom: 2;
-}
-
-.welcome-brand {
-    width: auto;
-    height: auto;
-    margin: 1 0 2 0;
-    content-align: center middle;
-}
-
-.welcome-prompt {
-    color: #a9bee4;
-    text-style: bold;
-    margin: 1 0 3 0;
-}
-
-#mode-chooser {
-    width: 100%;
-    height: 10;
-    align: center middle;
-}
-
-.mode-card {
-    width: 28;
-    height: 8;
-    margin: 0 1;
-    padding: 1 2;
-    color: #a9bee4;
-    border: round #24558d;
-    content-align: center middle;
-    text-align: center;
-}
-
-.mode-card:hover, .mode-card:focus,
-.mode-card.selected, .mode-card.selected:focus {
-    color: #ffffff;
-    background: #12345b;
-    border: double $magenta;
-    text-style: bold;
-}
-
-.welcome-help {
-    color: $magenta;
-    margin-top: 4;
-    text-style: bold;
-}
-
-.welcome-meta {
-    color: $muted;
-    margin-top: 2;
-}
-
-/* Workspace */
-#main-shell {
-    width: 100%;
-    height: 100%;
-    padding: 0 1;
-    border: round #1d4b80;
-}
-
-#brand-row {
-    width: 100%;
-    height: 11;
-}
-
-#brand-header {
-    width: 1fr;
-    height: 11;
-    padding: 1 1;
-    border-bottom: solid #1f4a7d;
-    content-align: left middle;
-}
-
+#brand-row { height: 7; width: 100%; }
+#brand-header { width: 1fr; height: 100%; padding: 0 1; content-align: left middle; }
 #header-info {
-    width: 25;
-    height: 11;
-    margin-top: 0;
-    padding: 0 1;
-    border: round #2b66b2;
-    background: #071126;
-    content-align: center middle;
+    width: 36; height: 6; border: round $cyan; color: $cyan;
+    background: $surface; content-align: center middle; text-align: center;
 }
-
-#workspace-row {
-    width: 100%;
-    height: 1fr;
-}
-
-#main-area {
-    width: 1fr;
-    height: 100%;
-}
-
-#right-rail {
-    width: 34;
-    height: 100%;
-    margin-left: 1;
-}
-
-#view-tabs {
-    width: 100%;
-    height: 5;
-    padding: 0 1;
-    border: round $cyan;
-    background: #07142b;
-    align: center middle;
-}
-
-.tabs-icon {
-    width: 4;
-    color: $cyan;
-    text-style: bold;
-    content-align: center middle;
-}
-
-.tabs-label {
-    width: 18;
-    color: $magenta;
-    text-style: bold;
-    content-align: left middle;
-}
-
-.view-tab {
-    min-width: 14;
-    height: 3;
-    margin-right: 1;
-    padding: 0 1;
-}
-
-.view-tab.active, .view-tab.active:focus {
-    background: #113c65;
-    color: #ffffff;
-    border: double $cyan;
-    text-style: bold;
-}
-
-.tab-hint {
-    width: 1fr;
-    color: $magenta;
-    content-align: right middle;
-    text-align: right;
-}
-
-#period-bar {
-    width: 100%;
-    height: 5;
-    margin-top: 1;
-    padding: 0 1;
-    border: round #24558d;
-    background: $surface;
-    align: center middle;
-}
-
-#period-navigation {
-    width: 1fr;
-    min-width: 0;
-    height: 3;
-    align: center middle;
-}
-
-#period-actions {
-    width: auto;
-    height: 3;
-    align: center middle;
-}
-
-.period-arrow {
-    min-width: 5;
-    width: 5;
-    height: 3;
-    margin: 0;
-    padding: 0;
-    border: none;
-    color: $cyan;
-    background: transparent;
-    text-style: bold;
-}
-
-.period-title {
-    width: 1fr;
-    min-width: 0;
-    height: 3;
-    padding: 0 1;
-    overflow: hidden;
-    color: #bfe4ff;
-    text-style: bold;
-    content-align: center middle;
-    text-align: center;
-}
-
-.primary-action {
-    min-width: 18;
-    color: $cyan;
-    border: round $cyan;
-    background: #0a2746;
-}
-
-.secondary-action {
-    min-width: 15;
-    color: #b7c9e9;
-    border: round #365e95;
-    background: #0a1832;
-}
-
-.complete-action {
-    min-width: 27;
-    color: #39ff14;
-    border: round #39ff14;
-    background: #0b2d2c;
-}
-
-.danger-action {
-    color: #ff416c;
-    border: round #ff416c;
-    background: #321329;
-}
-
-#views {
-    width: 100%;
-    height: 1fr;
-    margin-top: 1;
-    overflow-y: auto;
-}
-
-.view-panel {
-    display: none;
-    width: 100%;
-    height: 100%;
-}
-
-.view-panel.active-view {
-    display: block;
-}
-
-#week-table, #month-table {
-    display: none;
-}
-
-#week-board {
-    width: 100%;
-    height: 100%;
-    border: round $cyan;
-    background: #061025;
-    padding: 1;
-}
-
-#week-board:focus {
-    border: double $magenta;
-}
-
-TaskTable {
-    width: 100%;
-    height: 100%;
-    border: round $cyan;
-    background: #061025;
-    color: $text;
-}
-
-TaskTable:focus {
-    border: double $magenta;
-}
-
-DataTable > .datatable--header {
-    color: $cyan;
-    background: #0d2343;
-    text-style: bold;
-}
-
-.empty-state {
-    display: none;
-    width: 100%;
-    height: 100%;
-    border: round $cyan;
-    background: #061025;
-    color: $muted;
-    text-style: italic;
-    content-align: center middle;
-}
-
-#month-calendar {
-    width: 100%;
-    height: 100%;
-    min-height: 16;
-    border: round $magenta;
-    background: #061025;
-    padding: 1;
-}
-
-#progress-panel {
-    width: 100%;
-    height: 6;
-    margin-top: 1;
-    padding: 1 2;
-    border: round $cyan;
-    background: #071126;
-}
-
+#workspace-row, #main-area { width: 1fr; height: 1fr; }
+#right-rail { width: 34; height: 100%; margin-left: 1; padding-top: 6; }
 #sidebar-scroll {
-    width: 100%;
-    height: 1fr;
-    border: round $magenta;
-    background: #071126;
-    padding: 1 1;
-    scrollbar-size: 1 1;
+    height: 1fr; border: round $magenta; border-left: round $cyan;
+    background: $surface; padding: 1;
 }
-
-/* Breakpoint: tudo que pertence a um controle permanece no seu bloco. */
-.compact-layout #right-rail {
-    display: none;
+#sidebar { height: auto; padding: 0 1; }
+#view-tabs {
+    height: 5; padding: 0 1; border: round $cyan; border-right: round $magenta;
+    background: $surface; align: left middle;
 }
-
-.compact-layout #brand-row,
-.compact-layout #brand-header {
-    height: 9;
+.tabs-icon { width: 3; height: 3; color: $cyan; content-align: left middle; }
+.tabs-label { width: 15; height: 3; color: $magenta; text-style: bold; content-align: left middle; }
+.view-tab { min-width: 11; width: 12; height: 3; margin-right: 1; padding: 0; border: none; }
+.view-tab.active { border: round $cyan; background: #073653; color: $cyan; text-style: bold; }
+.tab-hint { width: 1fr; height: 3; color: $magenta; content-align: right middle; text-align: right; }
+#period-bar {
+    height: 5; margin-top: 1; padding: 0; border: round $cyan;
+    border-right: round $magenta; background: $surface; align: left middle;
 }
-
-.compact-layout #header-info {
-    width: 25;
-    height: 9;
+#period-navigation { width: 1fr; min-width: 0; height: 3; align: left middle; }
+#period-actions { width: auto; height: 3; align: left middle; }
+.period-arrow { width: 4; min-width: 4; height: 3; padding: 0; border: none; color: $cyan; background: transparent; }
+.period-title {
+    width: 1fr; min-width: 0; height: 3; overflow: hidden;
+    color: #9fdcff; text-style: bold; content-align: left middle;
 }
-
-.compact-layout #view-tabs {
-    height: 4;
-    padding: 0;
+.primary-action { color: $cyan; border: round $cyan; background: #09283e; }
+.secondary-action { color: #b7c9e9; border: round #466da0; }
+.complete-action { color: #39ff14; border: round #39ff14; }
+.danger-action { color: #ff416c; border: round #ff416c; }
+#views { width: 100%; height: 1fr; overflow: auto auto; }
+.view-panel { display: none; width: 100%; height: 100%; }
+.view-panel.active-view { display: block; }
+#week-table, #month-table { display: none; }
+#week-board { width: 100%; height: 100%; min-height: 12; padding: 0; }
+#week-board:focus { background: #091d32; }
+TaskTable {
+    width: 100%; height: 100%; border: round $cyan; border-right: round $magenta;
+    background: $bg; color: $text;
 }
-
-.compact-layout .tabs-label,
-.compact-layout .tab-hint {
-    display: none;
+TaskTable:focus { border-left: round $magenta; }
+DataTable > .datatable--header { color: $cyan; background: #09182b; text-style: bold; }
+DataTable > .datatable--cursor { color: #ffffff; background: #064977; }
+.empty-state {
+    display: none; width: 100%; height: 100%; border: round $cyan;
+    color: $muted; content-align: center middle;
 }
-
-.compact-layout .tabs-icon {
-    width: 3;
+#month-view { min-height: 22; }
+#month-calendar { width: 100%; height: 100%; min-height: 22; padding: 0; }
+#progress-panel {
+    height: 4; margin-top: 1; padding: 0 2; border: round $cyan;
+    border-right: round $magenta; background: $surface;
 }
+#app-footer { layout: horizontal; height: 2; padding: 0 1; align: left middle; }
+#command-prompt { width: 1fr; height: 1; color: $cyan; }
+#status-bar { width: auto; height: 1; }
+.footer-brand { width: auto; color: #91b3df; }
+.footer-productivity { width: auto; margin-left: 2; }
+.footer-infinity { width: 3; margin-left: 2; color: $cyan; }
 
-.compact-layout .view-tab {
-    width: 14;
-    min-width: 14;
-    margin-right: 0;
-    padding: 0;
+/* Abaixo de 140 colunas, priorizar tarefas; ajuda continua acessível com H. */
+.compact-layout #right-rail { display: none; }
+.compact-layout .tab-hint { display: none; }
+.narrow-layout #period-bar { height: 8; layout: vertical; }
+.narrow-layout #period-navigation, .narrow-layout #period-actions { width: 100%; height: 3; }
+.narrow-layout #period-actions { align: center middle; }
+.narrow-layout .footer-productivity, .narrow-layout .footer-infinity { display: none; }
+.short-layout #brand-row { height: 4; }
+.short-layout #header-info { height: 4; width: 31; }
+.short-layout #view-tabs { height: 3; border: none; }
+.short-layout #period-bar { margin-top: 0; }
+.short-layout #progress-panel { display: none; }
+.short-layout #app-footer { height: 1; }
+
+/* Abertura: os cartões continuam acessíveis mesmo com pouca altura. */
+#welcome-shell { width: 100%; height: 100%; padding: 0 1; }
+#welcome-card {
+    width: 100%; height: auto; min-height: 26; margin-top: 2;
+    padding: 2 3; border: round $cyan; border-right: round $magenta;
+    background: $surface; align: center middle;
 }
-
-.compact-layout #period-bar {
-    height: 8;
-    layout: vertical;
-    align: left middle;
-    padding: 0 1;
+.eyebrow { height: 1; color: $cyan; margin-bottom: 1; }
+.welcome-brand { height: 4; width: 100%; content-align: center middle; }
+.welcome-prompt { height: 2; color: #a9bee4; text-style: bold; content-align: center middle; }
+#mode-chooser { width: 100%; height: 8; align: center middle; }
+.mode-card {
+    width: 1fr; height: 6; margin: 0 1; padding: 1;
+    border: round $line; color: #a9bee4; content-align: center middle; text-align: center;
 }
-
-.compact-layout #period-navigation {
-    width: 100%;
-    height: 3;
+.mode-card:focus, .mode-card.selected {
+    background: #103252; border: round $cyan; color: #ffffff; text-style: bold;
 }
+.welcome-help { height: auto; color: $magenta; margin-top: 1; text-align: center; }
+.welcome-meta { height: 1; color: $muted; margin-top: 1; text-align: center; }
+.narrow-layout #mode-chooser { layout: vertical; height: 18; }
+.narrow-layout .mode-card { width: 100%; height: 5; margin: 0 0 1 0; }
+.narrow-layout #welcome-card { padding: 1; }
 
-.compact-layout #period-actions {
-    width: 100%;
-    height: 3;
-    align: left middle;
-}
-
-.compact-layout #views {
-    margin-top: 0;
-}
-
-.compact-layout #progress-panel {
-    height: 5;
-    margin-top: 0;
-    padding: 0 1;
-}
-
-.compact-layout #app-footer {
-    height: 3;
-}
-
-.compact-layout #command-prompt {
-    height: 1;
-}
-
-.compact-layout #status-bar {
-    height: 2;
-}
-
-.compact-layout #period-actions Button {
-    margin: 0 1;
-}
-
-.compact-layout .period-title {
-    text-align: center;
-    content-align: center middle;
-}
-
-.narrow-layout #header-info {
-    width: 22;
-}
-
-.narrow-layout #brand-row,
-.narrow-layout #brand-header {
-    height: 8;
-}
-
-.narrow-layout #header-info {
-    height: 8;
-}
-
-.narrow-layout #progress-panel {
-    display: none;
-}
-
-.short-layout #progress-panel {
-    display: none;
-}
-
-.narrow-layout .footer-productivity {
-    display: none;
-}
-
-.narrow-layout #status-bar {
-    align: right middle;
-}
-
-#sidebar {
-    width: 100%;
-    height: auto;
-    padding: 0 1;
-}
-
-#app-footer {
-    width: 100%;
-    height: 4;
-    padding: 0 1;
-}
-
-#command-prompt {
-    width: 100%;
-    height: 2;
-    color: $cyan;
-    content-align: left middle;
-}
-
-#status-bar {
-    width: 100%;
-    height: 2;
-    color: $muted;
-    align: right middle;
-}
-
-.footer-brand {
-    width: auto;
-    color: #91b3df;
-}
-
-.footer-productivity {
-    width: auto;
-    margin-left: 2;
-    padding-left: 2;
-    border-left: solid #24558d;
-}
-
-.footer-infinity {
-    width: 5;
-    margin-left: 2;
-    padding-left: 2;
-    border-left: solid #24558d;
-    color: $text;
-}
-
-/* Modais */
-ModalScreen {
-    background: rgba(1, 5, 18, 0.86);
-    align: center middle;
-}
-
+/* Formulários: mesma coluna de labels, sem decoração ocupando os campos. */
+ModalScreen { background: rgba(1, 5, 18, 0.65); align: center middle; }
 #form-overlay {
-    width: 76%;
-    max-width: 118;
-    height: auto;
-    max-height: 92%;
-    overflow-y: auto;
-    padding: 1 3;
-    border: double $cyan;
-    background: #071126;
+    width: 66%; max-width: 110; height: auto; max-height: 94%;
+    overflow-y: auto; padding: 1 2; border: round $cyan;
+    border-right: round $magenta; border-bottom: round $magenta; background: $surface;
 }
-
-.modal-heading {
-    width: 100%;
-    height: 5;
-    align: left middle;
-}
-
-.modal-symbol {
-    width: 5;
-    color: $cyan;
-    text-style: bold;
-    content-align: center middle;
-}
-
-.modal-title {
-    width: auto;
-    color: $cyan;
-    text-style: bold;
-}
-
-.modal-tagline {
-    width: 1fr;
-    padding-left: 2;
-    color: #9bb2d6;
-    text-align: right;
-    content-align: right middle;
-}
-
-.modal-title.danger {
-    color: #ff416c;
-}
-
-.close-button {
-    width: 5;
-    min-width: 5;
-    color: $magenta;
-    border: round $magenta;
-}
-
-.form-row {
-    width: 100%;
-    height: 4;
-    align: center middle;
-}
-
-.description-row {
-    height: 6;
-}
-
-.compact-row {
-    height: 4;
-}
-
-.form-label {
-    width: 20;
-    color: #9fdcff;
-    text-style: bold;
-    content-align: left middle;
-}
-
-.field-icon {
-    width: 4;
-    color: #b7c9e9;
-    content-align: center middle;
-}
-
+.modal-heading { width: 100%; height: 3; align: left middle; }
+.modal-symbol { width: 4; color: $cyan; text-style: bold; content-align: center middle; }
+.modal-title { width: auto; height: 3; color: $cyan; text-style: bold; content-align: left middle; }
+.modal-tagline { width: 1fr; height: 3; color: $muted; text-align: right; padding-right: 1; content-align: right middle; }
+.close-button { width: 3; min-width: 3; height: 3; padding: 0; border: none; color: $magenta; }
+.form-row { width: 100%; height: 3; align: left middle; }
+.description-row { height: 5; }
+.form-label { width: 20; height: 3; color: #9fdcff; text-style: bold; content-align: left middle; }
+.field-icon { width: 3; height: 3; color: #b7c9e9; content-align: center middle; }
 Input, TextArea, Select {
-    width: 1fr;
-    border: round #315e98;
-    background: #050d1d;
-    color: $text;
+    width: 1fr; border: round #466da0; background: #050d1d; color: $text;
 }
-
-SelectCurrent {
-    width: 1fr;
-    height: 3;
-    padding: 0 1;
-    border: none;
-    background: #050d1d;
-    color: $text;
-}
-
-SelectCurrent > #label,
-SelectCurrent.-has-value > #label {
-    color: $text;
-    background: transparent;
-}
-
-SelectCurrent .arrow {
-    color: $cyan;
-    background: transparent;
-}
-
-Input:focus, TextArea:focus, Select:focus {
-    border: double $cyan;
-    background: #0c2547;
-}
-
-Input, Select {
-    height: 3;
-}
-
-TextArea {
-    height: 5;
-}
-
-.view-radio {
-    width: 1fr;
-    height: 3;
-    border: none;
-    padding: 0;
-    layout: horizontal;
-    overflow: hidden;
-}
-
-.view-radio > RadioButton {
-    width: auto;
-    margin-right: 2;
-    background: transparent;
-    border: none;
-    color: #d7e4ff;
-}
-
-.view-radio > RadioButton.-on .toggle--button {
-    color: $cyan;
-}
-
-.modal-divider {
-    width: 100%;
-    height: 2;
-    color: $magenta;
-    content-align: center middle;
-}
-
-.form-actions {
-    width: 100%;
-    height: 4;
-    align: center middle;
-}
-
-.form-actions Button {
-    margin: 0 1;
-}
-
-.modal-footer-help {
-    width: 100%;
-    height: 2;
-    color: $muted;
-    content-align: center middle;
-}
-
-.compact-layout #form-overlay {
-    width: 94%;
-    max-height: 90%;
-    padding: 1 2;
-}
-
-.compact-layout #form-overlay .modal-heading {
-    height: 4;
-}
-
-.compact-layout #form-overlay .modal-tagline {
-    display: none;
-}
-
-.compact-layout #form-overlay .form-label {
-    width: 16;
-}
-
-.compact-layout #form-overlay .form-actions {
-    height: auto;
-    layout: vertical;
-    align: center middle;
-}
-
-.compact-layout #form-overlay .form-actions Button {
-    width: 100%;
-    margin: 1 0;
-}
-
-.compact-layout #form-overlay .modal-footer-help {
-    height: auto;
-    min-height: 2;
-    padding: 1 0;
-}
-
-.narrow-layout #form-overlay {
-    width: 98%;
-    padding: 1;
-}
-
-.narrow-layout #form-overlay .form-label {
-    width: 13;
-}
-
-.field-label {
-    height: 1;
-    color: #9fdcff;
-    text-style: bold;
-}
-
-.modal-subtitle {
-    color: $muted;
-    margin-bottom: 1;
-}
-
+Input, Select { height: 3; }
+TextArea { height: 5; }
+SelectCurrent { height: 1; padding: 0 1; border: none; background: #050d1d; color: $text; }
+SelectCurrent > #label, SelectCurrent.-has-value > #label { color: $text; background: transparent; }
+SelectCurrent .arrow { color: $cyan; background: transparent; }
+Input:focus, TextArea:focus, Select:focus { border: round $cyan; background: #0c2547; }
+.view-radio { width: 1fr; height: 3; border: none; padding: 0; layout: horizontal; }
+.view-radio > RadioButton { width: auto; margin-right: 1; border: none; background: transparent; color: $text; }
+.view-radio > RadioButton.-on .toggle--button { color: $cyan; }
+.modal-divider { width: 100%; height: 1; border-bottom: solid $magenta; overflow: hidden; }
+.form-actions { width: 100%; height: 3; align: center middle; }
+.form-actions Button { min-width: 10; margin: 0 1; padding: 0 1; }
+.modal-footer-help { width: 100%; height: 2; color: $muted; content-align: center middle; text-align: center; }
+.compact-layout #form-overlay { width: 94%; padding: 1; }
+.compact-layout .modal-tagline { display: none; }
+.narrow-layout .form-label { width: 16; }
+.narrow-layout #form-overlay .form-actions { layout: vertical; height: auto; }
+.narrow-layout #form-overlay .form-actions Button { width: 100%; margin: 0; }
+.narrow-layout #form-overlay .modal-footer-help { height: auto; min-height: 2; }
+.field-label { height: 1; color: #9fdcff; text-style: bold; }
+.modal-subtitle { height: auto; color: $muted; margin-bottom: 1; }
 #confirm-card, #filter-card, #help-card {
-    width: 64;
-    height: auto;
-    max-height: 88%;
-    padding: 2 3;
-    border: double $magenta;
-    background: #071126;
+    width: 64; max-width: 96%; height: auto; max-height: 90%; overflow-y: auto;
+    padding: 1 2; border: round $magenta; background: $surface;
 }
-
-.confirm-task {
-    color: #ffffff;
-    border: round #315e98;
-    background: #0c2547;
-    padding: 1 2;
-    margin: 2 0;
-    text-style: bold;
-}
-
-.confirm-question {
-    color: #b8c8e7;
-}
-
-.help-copy {
-    margin: 2 0;
-    color: #dbe8ff;
-}
+.confirm-task { height: auto; border: round $line; padding: 1; margin: 1 0; text-style: bold; }
+.confirm-question { height: auto; color: #b8c8e7; }
+.help-copy { height: auto; margin: 1 0; }

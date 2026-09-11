@@ -22,7 +22,8 @@ from textual.widgets import (
 from .models import Category, Priority, Status, Task, ViewMode, format_date, parse_date, parse_time
 from .services import TaskFilters, TaskService, month_bounds, shift_month, week_bounds
 from .widgets import (
-    AnalogClock,
+    DigitalClock,
+    gradient_text,
     BrandHeader,
     CalendarGrid,
     CommandPrompt,
@@ -134,9 +135,9 @@ class MonthView(Vertical):
 
 class MainScreen(Screen[None]):
     BINDINGS = [
-        ("d", "day_command", "Dia / deletar"),
+        ("d", "day_command", "Dia"),
         ("w", "set_mode('week')", "Semana"),
-        ("m", "month_command", "Mês / próximo"),
+        ("m", "month_command", "Mês"),
         ("a", "add_task", "Adicionar"),
         ("e", "edit_task", "Editar"),
         ("c", "toggle_task", "Concluir"),
@@ -171,7 +172,7 @@ class MainScreen(Screen[None]):
             TerminalChrome(id="terminal-chrome"),
             Horizontal(
                 BrandHeader(id="brand-header"),
-                AnalogClock(id="header-info"),
+                DigitalClock(id="header-info"),
                 id="brand-row",
             ),
             Horizontal(
@@ -239,8 +240,8 @@ class MainScreen(Screen[None]):
         """Adapta o painel lateral e a barra de período à largura disponível."""
         width = self.app.size.width if self.app else 160
         height = self.app.size.height if self.app else 60
-        self.set_class(width < 144, "compact-layout")
-        self.set_class(width < 88, "narrow-layout")
+        self.set_class(width < 140, "compact-layout")
+        self.set_class(width < 100, "narrow-layout")
         self.set_class(height < 40, "short-layout")
 
     def _period_range(self) -> tuple[date, date]:
@@ -296,8 +297,12 @@ class MainScreen(Screen[None]):
             table.configure_table()
         table.fill(tasks)
         self.task_ids[table_id] = {str(task.id): task.id for task in tasks if task.id is not None}
-        if tasks and self.selected_task_id not in self.task_ids[table_id].values():
-            self.selected_task_id = tasks[0].id
+        if table_id == f"{self.mode.value}-table":
+            if self.selected_task_id not in self.task_ids[table_id].values():
+                self.selected_task_id = tasks[0].id if tasks else None
+            if self.selected_task_id is not None:
+                row = next(i for i, task in enumerate(tasks) if task.id == self.selected_task_id)
+                table.move_cursor(row=row)
 
     def _update_empty_states(self) -> None:
         table = self.query_one("#day-table", TaskTable)
@@ -318,16 +323,18 @@ class MainScreen(Screen[None]):
         self.query_one(focus_targets[self.mode]).focus()
 
     def _current_task(self) -> Task | None:
+        if self.mode is ViewMode.WEEK:
+            self.selected_task_id = self.query_one(WeekBoard)._current_task_id()
         active_table = f"{self.mode.value}-table"
         if self.selected_task_id not in self.task_ids.get(active_table, {}).values():
             return None
         return self.service.get(self.selected_task_id) if self.selected_task_id else None
 
     def action_day_command(self) -> None:
-        self.action_delete_task() if self.mode is ViewMode.DAY else self.action_set_mode("day")
+        self.action_set_mode("day")
 
     def action_month_command(self) -> None:
-        self.action_next_period() if self.mode is ViewMode.MONTH else self.action_set_mode("month")
+        self.action_set_mode("month")
 
     def action_set_mode(self, mode: str) -> None:
         self.mode = ViewMode(mode)
@@ -338,6 +345,9 @@ class MainScreen(Screen[None]):
 
     def action_add_task(self) -> None:
         default_date = self.selected_month_day if self.mode is ViewMode.MONTH else self.anchor_date
+        if self.mode is ViewMode.WEEK:
+            board = self.query_one(WeekBoard)
+            default_date = board.start + timedelta(days=board.day_index)
         self.app.push_screen(TaskFormScreen(self.service, mode=self.mode, default_date=default_date), self._on_form_result)
 
     def action_edit_task(self) -> None:
@@ -425,10 +435,7 @@ class MainScreen(Screen[None]):
         self._refresh_all()
 
     def action_contextual_next(self) -> None:
-        if self.mode is ViewMode.MONTH:
-            self.action_previous_period()
-        else:
-            self.action_next_period()
+        self.action_next_period()
 
     def action_contextual_previous(self) -> None:
         self.action_previous_period()
@@ -452,23 +459,53 @@ class MainScreen(Screen[None]):
         elif button_id == "next-period":
             self.action_next_period()
 
+    def on_key(self, event) -> None:
+        focused = self.focused
+        if focused and focused.has_class("view-tab") and event.key in {"left", "right"}:
+            tabs = list(self.query(".view-tab"))
+            offset = 1 if event.key == "right" else -1
+            tabs[(tabs.index(focused) + offset) % len(tabs)].focus()
+            event.stop()
+
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         table_id = event.data_table.id or ""
-        self.selected_task_id = self.task_ids.get(table_id, {}).get(str(event.row_key.value))
+        if table_id == f"{self.mode.value}-table" and self.mode is ViewMode.DAY:
+            self.selected_task_id = self.task_ids.get(table_id, {}).get(str(event.row_key.value))
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         table_id = event.data_table.id or ""
-        self.selected_task_id = self.task_ids.get(table_id, {}).get(str(event.row_key.value))
+        if table_id == f"{self.mode.value}-table" and self.mode is ViewMode.DAY:
+            self.selected_task_id = self.task_ids.get(table_id, {}).get(str(event.row_key.value))
 
     def on_week_board_task_cursor_changed(self, event: WeekBoard.TaskCursorChanged) -> None:
-        if event.task_id is not None:
-            self.selected_task_id = event.task_id
+        self.selected_task_id = event.task_id
+        if event.confirmed:
+            self.action_edit_task() if event.task_id else self.action_add_task()
 
     def on_calendar_grid_day_selected(self, event: CalendarGrid.DaySelected) -> None:
         self.selected_month_day = event.day
         if event.day.month != self.anchor_date.month or event.day.year != self.anchor_date.year:
             self.anchor_date = event.day
         self._refresh_all()
+        if event.confirmed:
+            self.action_view_tasks()
+        else:
+            self.call_after_refresh(self._reveal_calendar_selection)
+
+    def _reveal_calendar_selection(self) -> None:
+        import calendar
+
+        grid = self.query_one(CalendarGrid)
+        weeks = calendar.Calendar(6).monthdatescalendar(grid.year, grid.month)
+        row = next(i for i, week in enumerate(weeks) if grid.selected_date in week)
+        cell_height = max(2, (grid.size.height - len(weeks) - 3) // len(weeks))
+        viewport = self.query_one("#views", VerticalScroll)
+        bottom = 3 + (row + 1) * (cell_height + 1)
+        top = 3 + row * (cell_height + 1)
+        if bottom > viewport.scroll_y + viewport.size.height:
+            viewport.scroll_to(y=bottom - viewport.size.height, animate=False)
+        elif top < viewport.scroll_y:
+            viewport.scroll_to(y=top, animate=False)
 
     def _on_form_result(self, result: dict[str, Any] | None) -> None:
         if not result:
@@ -481,6 +518,7 @@ class MainScreen(Screen[None]):
         if result.get("view_mode"):
             self.mode = ViewMode(result["view_mode"])
         self._refresh_all()
+        self._focus_active_view()
         action = "criada" if result.get("action") == "created" else "atualizada"
         self.notify(f"Tarefa {action} com sucesso.", title="DukieList", severity="information")
 
@@ -519,7 +557,7 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
         yield VerticalScroll(
             Horizontal(
                 Static("✎" if editing else "+", classes="modal-symbol"),
-                Static(title, classes="modal-title"),
+                Static(gradient_text(title), classes="modal-title"),
                 Static("Campos da tarefa", classes="modal-tagline"),
                 Button("×", id="form-close", classes="close-button"),
                 classes="modal-heading",
@@ -542,7 +580,7 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
                 classes="form-row radio-row",
             ),
             *([Horizontal(Static("Status:", classes="form-label"), Select([("Pendente", Status.PENDING.value), ("Concluída", Status.COMPLETED.value)], value=task.status.value, id="form-status"), classes="form-row compact-row")] if editing else []),
-            Static("────────────────────────────────────────────────────────", classes="modal-divider"),
+            Static("", classes="modal-divider"),
             Horizontal(
                 Button(Text("[ Salvar alterações ]" if editing else "[ Salvar ]"), id="form-save", classes="primary-action"),
                 *([Button(Text("[ Marcar como concluída ]"), id="form-complete", classes="complete-action")] if editing else []),
@@ -563,7 +601,7 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
     def _update_responsive_class(self) -> None:
         width = self.app.size.width if self.app else 160
         self.set_class(width < 110, "compact-layout")
-        self.set_class(width < 76, "narrow-layout")
+        self.set_class(width < 100, "narrow-layout")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self.action_save()
@@ -610,7 +648,7 @@ class ConfirmDeleteScreen(ModalScreen[int | None]):
         self.confirm_task = task
 
     def compose(self) -> ComposeResult:
-        yield Container(
+        yield VerticalScroll(
             Static("×  DELETAR TAREFA", classes="modal-title danger"),
             Static("Esta ação não pode ser desfeita.", classes="modal-subtitle"),
             Static(self.confirm_task.title, classes="confirm-task"),
@@ -638,7 +676,7 @@ class FilterScreen(ModalScreen[TaskFilters | None]):
         self.focus_field = focus_field
 
     def compose(self) -> ComposeResult:
-        yield Container(
+        yield VerticalScroll(
             Static("⌕  FILTRAR TAREFAS", classes="modal-title"),
             Static("Combine os campos ou deixe tudo vazio para limpar.", classes="modal-subtitle"),
             Static("BUSCAR", classes="field-label"),
@@ -686,10 +724,10 @@ class HelpScreen(ModalScreen[None]):
         text.append("ESC  ", style="#ff38d1 bold")
         text.append("fechar modal\n\n")
         text.append("ATALHOS\n", style="#00e5ff bold")
-        for key, label in (("D / W / M", "alternar modos; D exclui no modo dia e M avança no mês"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C / S / U", "alternar, concluir ou desmarcar"), ("X / DELETE", "excluir com confirmação"), ("F / P", "filtrar categoria ou prioridade"), ("V", "ver tarefas / limpar filtros"), ("N / B", "navegar período"), ("L", "limpar concluídas"), ("Q", "sair do DukieList")):
+        for key, label in (("D / W / M", "alternar modos Dia, Semana e Mês"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C / S / U", "alternar, concluir ou desmarcar"), ("X / DELETE", "excluir com confirmação"), ("F / P", "filtrar categoria ou prioridade"), ("V", "ver tarefas / limpar filtros"), ("N / B", "próximo período / período anterior"), ("L", "limpar concluídas"), ("Q", "sair do DukieList")):
             text.append(f"{key:<12}", style="#ff38d1 bold")
             text.append(f" {label}\n", style="#d2def4")
-        yield Container(Static("?  ATALHOS DO DUKIELIST", classes="modal-title"), Static(text, classes="help-copy"), Button(Text("[ Fechar ]"), id="help-close", classes="primary-action"), id="help-card")
+        yield VerticalScroll(Static("?  ATALHOS DO DUKIELIST", classes="modal-title"), Static(text, classes="help-copy"), Button(Text("[ Fechar ]"), id="help-close", classes="primary-action"), id="help-card")
 
     def on_mount(self) -> None:
         self.query_one("#help-close", Button).focus()

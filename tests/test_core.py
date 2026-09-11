@@ -1,12 +1,12 @@
 import tempfile
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from dukielist.models import Category, Priority, Status, ViewMode
 from dukielist.services import TaskFilters, TaskService, month_bounds, shift_month, week_bounds
 from dukielist.storage import SQLiteStorage
-from dukielist.widgets import AnalogClock
+from dukielist.widgets import DigitalClock
 
 
 class TaskServiceTest(unittest.TestCase):
@@ -63,11 +63,15 @@ class TaskServiceTest(unittest.TestCase):
         self.assertEqual((month_start, month_end), (date(2026, 9, 1), date(2026, 10, 1)))
         self.assertEqual(shift_month(anchor, 1), date(2026, 10, 10))
 
-    def test_analog_clock_contains_time_and_weekday(self) -> None:
-        rendered = AnalogClock().render().plain
-        self.assertIn("H  M  S", rendered)
-        weekdays = ("SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM")
-        self.assertTrue(any(line.startswith(day) for line in rendered.splitlines() for day in weekdays))
+    def test_digital_clock_contains_time_and_weekday(self) -> None:
+        from rich.console import Console
+        from io import StringIO
+
+        output = StringIO()
+        Console(file=output, width=40, color_system=None).print(
+            DigitalClock().render_time(datetime(2026, 9, 10, 23, 59, 58), compact=True))
+        self.assertIn("23:59:58", output.getvalue())
+        self.assertIn("Quinta-feira", output.getvalue())
 
 
 if __name__ == "__main__":

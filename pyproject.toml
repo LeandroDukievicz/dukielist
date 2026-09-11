@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "Cyberpunk terminal task manager built with Textual."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["textual>=0.47.0"]
+dependencies = ["textual>=8.2.8,<9"]
 
 [project.scripts]
 dukielist = "dukielist.app:main"
