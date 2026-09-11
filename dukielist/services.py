@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
-from .models import Category, Priority, Status, Task
+from .models import Category, Priority, Status, Task, ViewMode
 from .storage import SQLiteStorage
 
 
@@ -46,6 +46,7 @@ class TaskService:
     def create(
         self, *, title: str, description: str, task_date: date, task_time: time | None,
         priority: Priority, category: Category, status: Status = Status.PENDING,
+        view_mode: ViewMode = ViewMode.DAY,
     ) -> Task:
         clean_title = title.strip()
         if not clean_title:
@@ -54,12 +55,14 @@ class TaskService:
         return self.storage.create(Task(
             id=None, title=clean_title, description=description.strip(), task_date=task_date,
             task_time=task_time, priority=priority, category=category, status=status,
+            view_mode=view_mode,
             created_at=now, updated_at=now,
         ))
 
     def update(
         self, task_id: int, *, title: str, description: str, task_date: date,
         task_time: time | None, priority: Priority, category: Category, status: Status,
+        view_mode: ViewMode | None = None,
     ) -> Task:
         task = self.storage.get(task_id)
         if not task:
@@ -69,6 +72,8 @@ class TaskService:
             raise ValueError("O título da tarefa é obrigatório.")
         task.title, task.description, task.task_date = clean_title, description.strip(), task_date
         task.task_time, task.priority, task.category, task.status = task_time, priority, category, status
+        if view_mode is not None:
+            task.view_mode = view_mode
         task.updated_at = datetime.now()
         return self.storage.update(task)
 

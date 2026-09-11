@@ -3,7 +3,7 @@ import unittest
 from datetime import date, timedelta
 from pathlib import Path
 
-from dukielist.models import Category, Priority, Status
+from dukielist.models import Category, Priority, Status, ViewMode
 from dukielist.services import TaskFilters, TaskService, month_bounds, shift_month, week_bounds
 from dukielist.storage import SQLiteStorage
 
@@ -26,8 +26,10 @@ class TaskServiceTest(unittest.TestCase):
             task_time=None,
             priority=Priority.HIGH,
             category=Category.STUDY,
+            view_mode=ViewMode.WEEK,
         )
         self.assertIsNotNone(task.id)
+        self.assertEqual(self.service.get(task.id).view_mode, ViewMode.WEEK)
         self.assertEqual(self.service.list_between(today, today + timedelta(days=1))[0].title, "Estudar")
 
         updated = self.service.toggle(task.id)
@@ -43,8 +45,10 @@ class TaskServiceTest(unittest.TestCase):
             priority=Priority.LOW,
             category=Category.PERSONAL,
             status=Status.PENDING,
+            view_mode=ViewMode.MONTH,
         )
         self.assertEqual(changed.title, "Estudar Textual")
+        self.assertEqual(changed.view_mode, ViewMode.MONTH)
         self.assertEqual(len(self.service.list_between(today, today + timedelta(days=1), TaskFilters(priority=Priority.LOW))), 1)
         self.assertTrue(self.service.delete(task.id))
         self.assertIsNone(self.service.get(task.id))

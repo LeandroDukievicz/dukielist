@@ -36,6 +36,7 @@ class SQLiteStorage:
                     priority TEXT NOT NULL,
                     category TEXT NOT NULL,
                     status TEXT NOT NULL,
+                    view_mode TEXT NOT NULL DEFAULT 'day',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -43,6 +44,9 @@ class SQLiteStorage:
                 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
                 """
             )
+            columns = {row["name"] for row in connection.execute("PRAGMA table_info(tasks)")}
+            if "view_mode" not in columns:
+                connection.execute("ALTER TABLE tasks ADD COLUMN view_mode TEXT NOT NULL DEFAULT 'day'")
 
     @staticmethod
     def _task_values(task: Task) -> tuple[object, ...]:
@@ -54,6 +58,7 @@ class SQLiteStorage:
             task.priority.value,
             task.category.value,
             task.status.value,
+            task.view_mode.value,
             task.created_at.isoformat(timespec="seconds"),
             task.updated_at.isoformat(timespec="seconds"),
         )
@@ -64,8 +69,8 @@ class SQLiteStorage:
                 """
                 INSERT INTO tasks
                 (title, description, task_date, task_time, priority, category,
-                 status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 status, view_mode, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 self._task_values(task),
             )
@@ -80,10 +85,10 @@ class SQLiteStorage:
             connection.execute(
                 """
                 UPDATE tasks SET title=?, description=?, task_date=?, task_time=?,
-                    priority=?, category=?, status=?, updated_at=?
-                WHERE id=?
+                    priority=?, category=?, status=?, view_mode=?, updated_at=?
+                    WHERE id=?
                 """,
-                (*values[:7], values[8], task.id),
+                (*values[:7], values[7], values[9], task.id),
             )
         return task
 

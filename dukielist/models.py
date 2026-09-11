@@ -41,6 +41,7 @@ class Task:
     priority: Priority
     category: Category
     status: Status
+    view_mode: ViewMode = ViewMode.DAY
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
 
@@ -54,6 +55,12 @@ class Task:
 
     @classmethod
     def from_row(cls, row: Any) -> "Task":
+        view_mode = ViewMode.DAY
+        if "view_mode" in row.keys() and row["view_mode"]:
+            try:
+                view_mode = ViewMode(row["view_mode"])
+            except ValueError:
+                view_mode = ViewMode.DAY
         return cls(
             id=int(row["id"]),
             title=str(row["title"]),
@@ -63,6 +70,7 @@ class Task:
             priority=Priority(row["priority"]),
             category=Category(row["category"]),
             status=Status(row["status"]),
+            view_mode=view_mode,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )
