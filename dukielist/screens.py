@@ -6,6 +6,7 @@ from typing import Any
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.events import Resize
 from textual.screen import ModalScreen, Screen
 from textual.widgets import (
     Button,
@@ -21,26 +22,17 @@ from textual.widgets import (
 from .models import Category, Priority, Status, Task, ViewMode, format_date, parse_date, parse_time
 from .services import TaskFilters, TaskService, month_bounds, shift_month, week_bounds
 from .widgets import (
+    AnalogClock,
     BrandHeader,
     CalendarGrid,
     CommandPrompt,
-    HeaderInfo,
-    HeaderSlogan,
     ModeCard,
     ProgressPanel,
-    QuotePanel,
     SidebarPanel,
     TaskTable,
     TerminalChrome,
     WeekBoard,
 )
-
-
-QUOTES = {
-    ViewMode.DAY: "Disciplina hoje, resultados amanhã.",
-    ViewMode.WEEK: "Grandes resultados vêm de semanas consistentes.",
-    ViewMode.MONTH: "Consistência hoje, liberdade amanhã.",
-}
 
 
 def _select_value(value: Any, enum_type):
@@ -66,7 +58,7 @@ class WelcomeScreen(Screen[None]):
         self.modes = [ViewMode.DAY, ViewMode.WEEK, ViewMode.MONTH]
 
     def compose(self) -> ComposeResult:
-        yield Container(
+        yield VerticalScroll(
             TerminalChrome(id="welcome-chrome"),
             Container(
                 Static("[ DUKIELIST / START ]", classes="eyebrow"),
@@ -86,7 +78,16 @@ class WelcomeScreen(Screen[None]):
         )
 
     def on_mount(self) -> None:
+        self._update_responsive_class()
         self._refresh_selection()
+
+    def on_resize(self, event: Resize) -> None:
+        self._update_responsive_class()
+
+    def _update_responsive_class(self) -> None:
+        width = self.app.size.width if self.app else 160
+        self.set_class(width < 100, "compact-layout")
+        self.set_class(width < 76, "narrow-layout")
 
     def _refresh_selection(self) -> None:
         for index, mode in enumerate(self.modes):
@@ -170,8 +171,7 @@ class MainScreen(Screen[None]):
             TerminalChrome(id="terminal-chrome"),
             Horizontal(
                 BrandHeader(id="brand-header"),
-                HeaderSlogan(id="header-slogan"),
-                HeaderInfo(id="header-info"),
+                AnalogClock(id="header-info"),
                 id="brand-row",
             ),
             Horizontal(
@@ -186,11 +186,17 @@ class MainScreen(Screen[None]):
                         id="view-tabs",
                     ),
                     Horizontal(
-                        Button("‹", id="previous-period", classes="period-arrow"),
-                        Static(id="period-title", classes="period-title"),
-                        Button("›", id="next-period", classes="period-arrow"),
-                        Button(Text("[ ＋ Adicionar tarefa ]"), id="add-task", classes="primary-action"),
-                        Button(Text("[ ✎ Editar tarefa ]"), id="edit-task", classes="secondary-action"),
+                        Horizontal(
+                            Button("‹", id="previous-period", classes="period-arrow"),
+                            Static(id="period-title", classes="period-title"),
+                            Button("›", id="next-period", classes="period-arrow"),
+                            id="period-navigation",
+                        ),
+                        Horizontal(
+                            Button("＋ ADICIONAR", id="add-task", classes="primary-action"),
+                            Button("✎ EDITAR", id="edit-task", classes="secondary-action"),
+                            id="period-actions",
+                        ),
                         id="period-bar",
                     ),
                     VerticalScroll(
@@ -203,7 +209,6 @@ class MainScreen(Screen[None]):
                     id="main-area",
                 ),
                 Vertical(
-                    QuotePanel(id="quote-panel"),
                     VerticalScroll(SidebarPanel(id="sidebar"), id="sidebar-scroll"),
                     id="right-rail",
                 ),
@@ -223,8 +228,20 @@ class MainScreen(Screen[None]):
         )
 
     def on_mount(self) -> None:
+        self._update_responsive_class()
         self._refresh_all()
         self._focus_active_view()
+
+    def on_resize(self, event: Resize) -> None:
+        self._update_responsive_class()
+
+    def _update_responsive_class(self) -> None:
+        """Adapta o painel lateral e a barra de período à largura disponível."""
+        width = self.app.size.width if self.app else 160
+        height = self.app.size.height if self.app else 60
+        self.set_class(width < 144, "compact-layout")
+        self.set_class(width < 88, "narrow-layout")
+        self.set_class(height < 40, "short-layout")
 
     def _period_range(self) -> tuple[date, date]:
         if self.mode is ViewMode.DAY:
@@ -269,8 +286,7 @@ class MainScreen(Screen[None]):
         self._fill_table("month-table", selected_day_tasks)
 
         mode_label = {ViewMode.DAY: "Progresso do dia", ViewMode.WEEK: "Progresso da semana", ViewMode.MONTH: "Progresso do mês"}[self.mode]
-        self.query_one("#progress-panel", ProgressPanel).update_progress(mode_label, self.service.progress(tasks), QUOTES[self.mode])
-        self.query_one("#quote-panel", QuotePanel).update_quote("Foco transforma planos em realidade.")
+        self.query_one("#progress-panel", ProgressPanel).update_progress(mode_label, self.service.progress(tasks))
         self.query_one("#sidebar", SidebarPanel).update_for_mode(self.mode.value, tasks, self.filters.active)
         self._update_empty_states()
 
@@ -500,11 +516,11 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
         task = self.edit_task
         editing = task is not None
         title = "Editar tarefa" if editing else "Adicionar tarefa"
-        yield Container(
+        yield VerticalScroll(
             Horizontal(
                 Static("✎" if editing else "+", classes="modal-symbol"),
                 Static(title, classes="modal-title"),
-                Static("Altere os dados da sua tarefa." if editing else "Dê um passo hoje para um amanhã melhor.", classes="modal-tagline"),
+                Static("Campos da tarefa", classes="modal-tagline"),
                 Button("×", id="form-close", classes="close-button"),
                 classes="modal-heading",
             ),
@@ -538,7 +554,16 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
         )
 
     def on_mount(self) -> None:
+        self._update_responsive_class()
         self.query_one("#form-title", Input).focus()
+
+    def on_resize(self, event: Resize) -> None:
+        self._update_responsive_class()
+
+    def _update_responsive_class(self) -> None:
+        width = self.app.size.width if self.app else 160
+        self.set_class(width < 110, "compact-layout")
+        self.set_class(width < 76, "narrow-layout")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self.action_save()

@@ -34,10 +34,6 @@ MODE_LABELS = {
     ViewMode.MONTH.value: "MÊS",
 }
 
-WEEKDAYS_SHORT = ("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
-MONTHS_SHORT = ("Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez")
-
-
 def gradient_text(value: str, start: str = "#00efff", end: str = "#ff38d1") -> Text:
     """Renderiza o branding com uma variação de cor por caractere."""
     text = Text(no_wrap=True)
@@ -94,40 +90,146 @@ class BrandHeader(Static):
         result.append("✓", style="#00e5ff bold")
         result.append("] ", style="#ff38d1 bold")
         result.append_text(gradient_text("DukieList"))
-        result.append("\nPequenas tarefas, grandes conquistas! ", style="#8ec8ef")
-        result.append("✦", style="#ff38d1 bold")
         return result
 
 
-class HeaderSlogan(Static):
-    def render(self) -> Text:
-        text = Text()
-        text.append("DISCIPLINA HOJE", style="#00e5ff")
-        text.append("  ───", style="#ff38d1")
-        text.append("\nRESULTADOS AMANHÃ", style="#00e5ff")
-        return text
+class AnalogClock(Static):
+    """Relógio analógico que redesenha os três ponteiros a cada segundo."""
 
+    _WIDTH = 15
+    _HEIGHT = 7
+    _CENTER = (7, 3)
+    _HOUR_COLOR = "#ff38d1"
+    _MINUTE_COLOR = "#00e5ff"
+    _SECOND_COLOR = "#ff4fd8"
 
-class HeaderInfo(Static):
     def on_mount(self) -> None:
-        self.set_interval(1, self.refresh)
+        self.set_interval(1, self._tick)
+
+    def _tick(self) -> None:
+        self.refresh()
+
+    @classmethod
+    def _hand_endpoint(
+        cls, angle: float, radius_x: float, radius_y: float, center: tuple[int, int] | None = None
+    ) -> tuple[int, int]:
+        from math import cos, radians, sin
+
+        center = center or cls._CENTER
+        return (
+            round(center[0] + sin(radians(angle)) * radius_x),
+            round(center[1] - cos(radians(angle)) * radius_y),
+        )
+
+    @classmethod
+    def _draw_hand(
+        cls,
+        grid: list[list[tuple[str, str]]],
+        endpoint: tuple[int, int],
+        color: str,
+        center: tuple[int, int] | None = None,
+    ) -> None:
+        x0, y0 = center or cls._CENTER
+        x1, y1 = endpoint
+        steps = max(abs(x1 - x0), abs(y1 - y0)) * 3 or 1
+        previous = (x0, y0)
+        for step in range(1, steps + 1):
+            x = round(x0 + (x1 - x0) * step / steps)
+            y = round(y0 + (y1 - y0) * step / steps)
+            if (x, y) == previous:
+                continue
+            if x == previous[0]:
+                glyph = "│"
+            elif y == previous[1]:
+                glyph = "─"
+            elif (x - previous[0]) * (y - previous[1]) < 0:
+                glyph = "╱"
+            else:
+                glyph = "╲"
+            if 0 <= y < len(grid) and 0 <= x < len(grid[0]):
+                grid[y][x] = (glyph, color)
+            previous = (x, y)
+
+    @staticmethod
+    def _weekday_label(now: datetime) -> str:
+        return ("SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM")[now.weekday()]
 
     def render(self) -> Text:
         now = datetime.now()
+        # ``size.height`` excludes bordas; o cabeçalho grande possui nove linhas úteis.
+        if (self.size.height or 9) < 8:
+            return self._render_compact(now)
+
+        grid = [[("·", "#24558d") for _ in range(self._WIDTH)] for _ in range(self._HEIGHT)]
+
+        # Marcações cardeais e intermediárias do mostrador.
+        marks = {
+            (7, 0): ("12", "#dbe8ff"),
+            (10, 1): ("1", "#7891b8"),
+            (12, 3): ("3", "#dbe8ff"),
+            (10, 5): ("5", "#7891b8"),
+            (7, 6): ("6", "#dbe8ff"),
+            (4, 5): ("7", "#7891b8"),
+            (1, 3): ("9", "#dbe8ff"),
+            (4, 1): ("11", "#7891b8"),
+        }
+        for (x, y), value in marks.items():
+            glyph, color = value
+            for offset, char in enumerate(glyph):
+                if 0 <= x + offset < self._WIDTH:
+                    grid[y][x + offset] = (char, color)
+
+        # Horário contínuo: hora inclui a fração dos minutos.
+        hour_angle = (now.hour % 12 + now.minute / 60) * 30
+        minute_angle = (now.minute + now.second / 60) * 6
+        second_angle = now.second * 6
+        self._draw_hand(grid, self._hand_endpoint(hour_angle, 3.0, 1.7), self._HOUR_COLOR)
+        self._draw_hand(grid, self._hand_endpoint(minute_angle, 4.5, 2.5), self._MINUTE_COLOR)
+        self._draw_hand(grid, self._hand_endpoint(second_angle, 5.2, 2.8), self._SECOND_COLOR)
+        grid[self._CENTER[1]][self._CENTER[0]] = ("●", "#ffffff")
+
         text = Text()
-        text.append(f"{WEEKDAYS_SHORT[now.weekday()]}, {now.day:02d} de {MONTHS_SHORT[now.month - 1]} de {now.year}\n", style="#e5edff")
-        text.append("◷  ", style="#e5edff bold")
-        text.append(now.strftime("%H:%M"), style="#e5edff")
+        for row in grid:
+            for glyph, color in row:
+                text.append(glyph, style=color)
+            text.append("\n")
+        text.append(f"{self._weekday_label(now)}  ·  {now:%H:%M:%S}", style="#dbe8ff bold")
+        text.append("\nH", style=self._HOUR_COLOR + " bold")
+        text.append("  M", style=self._MINUTE_COLOR + " bold")
+        text.append("  S", style=self._SECOND_COLOR + " bold")
         return text
 
+    def _render_compact(self, now: datetime) -> Text:
+        """Versão reduzida para terminais baixos, mantendo dia da semana e os três ponteiros."""
+        width, height = 15, 5
+        center = (7, 2)
+        grid = [[("·", "#24558d") for _ in range(width)] for _ in range(height)]
+        marks = {
+            (7, 0): ("12", "#dbe8ff"),
+            (1, 2): ("9", "#dbe8ff"),
+            (12, 2): ("3", "#dbe8ff"),
+            (7, 4): ("6", "#dbe8ff"),
+        }
+        for (x, y), (glyph, color) in marks.items():
+            for offset, char in enumerate(glyph):
+                if 0 <= x + offset < width:
+                    grid[y][x + offset] = (char, color)
 
-class QuotePanel(Static):
-    def update_quote(self, quote: str) -> None:
+        hour_angle = (now.hour % 12 + now.minute / 60) * 30
+        minute_angle = (now.minute + now.second / 60) * 6
+        second_angle = now.second * 6
+        self._draw_hand(grid, self._hand_endpoint(hour_angle, 2.5, 1.1, center), self._HOUR_COLOR, center)
+        self._draw_hand(grid, self._hand_endpoint(minute_angle, 4.0, 1.7, center), self._MINUTE_COLOR, center)
+        self._draw_hand(grid, self._hand_endpoint(second_angle, 5.0, 1.9, center), self._SECOND_COLOR, center)
+        grid[center[1]][center[0]] = ("●", "#ffffff")
+
         text = Text()
-        text.append('“ ', style="#ff38d1 bold")
-        text.append(quote, style="#b9c9e7 italic")
-        text.append(' ”', style="#ff38d1 bold")
-        self.update(text)
+        for row in grid:
+            for glyph, color in row:
+                text.append(glyph, style=color)
+            text.append("\n")
+        text.append(f"{self._weekday_label(now)}  ·  {now:%H:%M:%S}", style="#dbe8ff bold")
+        return text
 
 
 class CommandPrompt(Static):
@@ -176,8 +278,7 @@ class ModeCard(Static):
 
 
 class ProgressPanel(Static):
-    def update_progress(self, label: str, progress: Progress, quote: str) -> None:
-        self.quote = quote
+    def update_progress(self, label: str, progress: Progress) -> None:
         self.label = label
         self.progress = progress
         self.update(self._render_progress())
@@ -189,8 +290,6 @@ class ProgressPanel(Static):
         line.append(self.label, style="#9fdcff bold")
         line.append("\n")
         line.append_text(progress_render(self.progress, width))
-        line.append("   │   ", style="#1f5c91")
-        line.append(f'“{self.quote}”', style="#b9c9e7 italic")
         return line
 
     def render(self) -> Text:

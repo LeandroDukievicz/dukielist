@@ -6,6 +6,7 @@ from pathlib import Path
 from dukielist.models import Category, Priority, Status, ViewMode
 from dukielist.services import TaskFilters, TaskService, month_bounds, shift_month, week_bounds
 from dukielist.storage import SQLiteStorage
+from dukielist.widgets import AnalogClock
 
 
 class TaskServiceTest(unittest.TestCase):
@@ -61,6 +62,12 @@ class TaskServiceTest(unittest.TestCase):
         self.assertEqual(week_end, date(2026, 9, 14))
         self.assertEqual((month_start, month_end), (date(2026, 9, 1), date(2026, 10, 1)))
         self.assertEqual(shift_month(anchor, 1), date(2026, 10, 10))
+
+    def test_analog_clock_contains_time_and_weekday(self) -> None:
+        rendered = AnalogClock().render().plain
+        self.assertIn("H  M  S", rendered)
+        weekdays = ("SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM")
+        self.assertTrue(any(line.startswith(day) for line in rendered.splitlines() for day in weekdays))
 
 
 if __name__ == "__main__":
