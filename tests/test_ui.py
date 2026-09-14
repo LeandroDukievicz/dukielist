@@ -60,6 +60,15 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
                     for mode in ("day", "week", "month"):
                         main.action_set_mode(mode)
                         await pilot.pause()
+                        tabs = [main.query_one("#" + name) for name in
+                                ("mode-day", "mode-week", "mode-month", "go-today")]
+                        for tab in tabs:
+                            self.assertTrue(tab.parent.region.contains_region(tab.region),
+                                            (size, mode, tab.id, tab.region, tab.parent.region))
+                        for index, tab in enumerate(tabs):
+                            for other in tabs[index + 1:]:
+                                self.assertFalse(tab.region.overlaps(other.region),
+                                                 (size, mode, tab.id, other.id))
                         controls = [main.query_one("#" + name) for name in
                                     ("previous-period", "next-period", "add-task", "edit-task")]
                         for control in controls:
@@ -115,6 +124,30 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("enter")
             self.assertEqual(self.app.screen.mode, ViewMode.DAY)
             self.assertEqual(self.app.screen.anchor_date, selected)
+
+    async def test_go_today_button_and_keyboard_shortcut_in_every_mode(self):
+        async with self.app.run_test(size=(168, 52)) as pilot:
+            await pilot.press("enter")
+            main = self.app.screen
+            today = date.today()
+
+            for mode in ViewMode:
+                with self.subTest(mode=mode):
+                    main.action_set_mode(mode.value)
+                    main.anchor_date = date(2025, 1, 15)
+                    main.selected_month_day = date(2025, 1, 15)
+                    await pilot.press("t")
+                    self.assertEqual(main.anchor_date, today)
+                    self.assertEqual(main.selected_month_day, today)
+                    if mode is ViewMode.WEEK:
+                        self.assertEqual(main.query_one(WeekBoard).day_index, today.weekday())
+
+            main.anchor_date = date(2024, 6, 10)
+            main.selected_month_day = date(2024, 6, 10)
+            main.query_one("#go-today", Button).focus()
+            await pilot.press("enter")
+            self.assertEqual(main.anchor_date, today)
+            self.assertEqual(main.selected_month_day, today)
 
     async def test_six_week_month_fits_supported_heights(self):
         async with self.app.run_test(size=(168, 52)) as pilot:

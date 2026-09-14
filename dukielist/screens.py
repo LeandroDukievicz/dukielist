@@ -19,6 +19,7 @@ from textual.widgets import (
     TextArea,
 )
 
+from . import __version__
 from .models import Category, Priority, Status, Task, ViewMode, format_date, parse_date, parse_time
 from .services import TaskFilters, TaskService, month_bounds, shift_month, week_bounds
 from .widgets import (
@@ -70,7 +71,7 @@ class WelcomeScreen(Screen[None]):
                     id="mode-chooser",
                 ),
                 Static("← → selecionar   •   ENTER abrir   •   TAB navegar   •   Q sair", classes="welcome-help"),
-                Static("SQLite local  /  teclado first  /  v1.0.0", classes="welcome-meta"),
+                Static(f"SQLite local  /  teclado first  /  v{__version__}", classes="welcome-meta"),
                 id="welcome-card",
             ),
             id="welcome-shell",
@@ -136,6 +137,7 @@ class MainScreen(Screen[None]):
         ("d", "day_command", "Dia"),
         ("w", "set_mode('week')", "Semana"),
         ("m", "month_command", "Mês"),
+        ("t", "go_today", "Ir p/ hoje"),
         ("a", "add_task", "Adicionar"),
         ("e", "edit_task", "Editar"),
         ("c", "toggle_task", "Concluir"),
@@ -175,6 +177,7 @@ class MainScreen(Screen[None]):
                     Button(Text("[ Dia ]"), id="mode-day", classes="view-tab"),
                     Button(Text("[ Semana ]"), id="mode-week", classes="view-tab"),
                     Button(Text("[ Mês ]"), id="mode-month", classes="view-tab"),
+                    Button(Text("Ir p/ hoje"), id="go-today", classes="view-tab today-tab"),
                     Static("Use ← → para navegar e ENTER para confirmar", classes="tab-hint"),
                     id="view-tabs",
                 ),
@@ -215,7 +218,7 @@ class MainScreen(Screen[None]):
             Vertical(
                 CommandPrompt(id="command-prompt"),
                 Horizontal(
-                    Static("DukieList v1.0.0", classes="footer-brand"),
+                    Static(f"DukieList v{__version__}", classes="footer-brand"),
                     Static("Produtividade no terminal", classes="footer-productivity"),
                     Static("∞", classes="footer-infinity"),
                     id="status-bar",
@@ -341,6 +344,18 @@ class MainScreen(Screen[None]):
         self._refresh_all()
         self._focus_active_view()
 
+    def action_go_today(self) -> None:
+        today = date.today()
+        self.anchor_date = today
+        self.selected_month_day = today
+        self.selected_task_id = None
+        week_board = self.query_one("#week-board", WeekBoard)
+        week_board.day_index = today.weekday()
+        week_board.task_index = 0
+        self._refresh_all()
+        self._focus_active_view()
+        self.notify("Visualização posicionada em hoje.", title="DukieList")
+
     def action_add_task(self) -> None:
         default_date = self.selected_month_day if self.mode is ViewMode.MONTH else self.anchor_date
         if self.mode is ViewMode.WEEK:
@@ -364,6 +379,9 @@ class MainScreen(Screen[None]):
             updated = self.service.toggle(task.id)
             self.notify("Tarefa concluída." if updated.completed else "Tarefa reaberta.", title="Atualizado", severity="information")
             self._refresh_all()
+            request_sync = getattr(self.app, "request_trello_completion_sync", None)
+            if request_sync is not None:
+                request_sync()
         except ValueError as exc:
             self.notify(str(exc), title="Erro", severity="error")
 
@@ -448,6 +466,8 @@ class MainScreen(Screen[None]):
         button_id = event.button.id or ""
         if button_id.startswith("mode-"):
             self.action_set_mode(button_id.removeprefix("mode-"))
+        elif button_id == "go-today":
+            self.action_go_today()
         elif button_id == "add-task":
             self.action_add_task()
         elif button_id == "edit-task":
@@ -507,6 +527,9 @@ class MainScreen(Screen[None]):
             self.mode = ViewMode(result["view_mode"])
         self._refresh_all()
         self._focus_active_view()
+        request_sync = getattr(self.app, "request_trello_completion_sync", None)
+        if request_sync is not None:
+            request_sync()
         action = "criada" if result.get("action") == "created" else "atualizada"
         self.notify(f"Tarefa {action} com sucesso.", title="DukieList", severity="information")
 
@@ -712,7 +735,7 @@ class HelpScreen(ModalScreen[None]):
         text.append("ESC  ", style="#ff38d1 bold")
         text.append("fechar modal\n\n")
         text.append("ATALHOS\n", style="#00e5ff bold")
-        for key, label in (("D / W / M", "alternar modos Dia, Semana e Mês"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C / S / U", "alternar, concluir ou desmarcar"), ("X / DELETE", "excluir com confirmação"), ("F / P", "filtrar categoria ou prioridade"), ("V", "ver tarefas / limpar filtros"), ("N / B", "próximo período / período anterior"), ("L", "limpar concluídas"), ("Q", "sair do DukieList")):
+        for key, label in (("D / W / M", "alternar modos Dia, Semana e Mês"), ("T", "ir para a data de hoje"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C / S / U", "alternar, concluir ou desmarcar"), ("X / DELETE", "excluir com confirmação"), ("F / P", "filtrar categoria ou prioridade"), ("V", "ver tarefas / limpar filtros"), ("N / B", "próximo período / período anterior"), ("L", "limpar concluídas"), ("Q", "sair do DukieList")):
             text.append(f"{key:<12}", style="#ff38d1 bold")
             text.append(f" {label}\n", style="#d2def4")
         yield VerticalScroll(Static("?  ATALHOS DO DUKIELIST", classes="modal-title"), Static(text, classes="help-copy"), Button(Text("[ Fechar ]"), id="help-close", classes="primary-action"), id="help-card")

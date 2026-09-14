@@ -44,6 +44,7 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 168 co
 - Manter a semana inteira visível, com barra de rolagem nas colunas que excederem o espaço disponível.
 - Ajustar o calendário à altura do terminal para que todos os dias do mês vigente permaneçam na tela.
 - Continuar vendo os dados após fechar e abrir o aplicativo: o SQLite é carregado automaticamente.
+- Sincronizar cartões do Trello com prazo, sem duplicar tarefas em execuções futuras.
 
 O topo exibe apenas o nome **DukieList** em degradê. Logo abaixo, as abas de visualização dividem a faixa com um relógio **digital HH:MM:SS**, atualizado a cada segundo, com o dia da semana e a data. Usa o horário local da máquina.
 
@@ -60,6 +61,7 @@ No modo Semana, `← →` escolhem o dia e `↑ ↓` percorrem todas as tarefas 
 | `D` | Modo Dia |
 | `W` | Modo Semana |
 | `M` | Modo Mês |
+| `T` | Ir para a data de hoje em qualquer modo |
 | `A` | Adicionar tarefa |
 | `E` | Editar tarefa selecionada |
 | `C` | Concluir ou reabrir tarefa |
@@ -152,6 +154,49 @@ dukielist --db /caminho/para/meu-dukielist.db
 ```
 
 Para fechar o programa, pressione `Q` ou `CTRL+C`.
+
+## Sincronização com o Trello
+
+O DukieList pode importar cartões atribuídos a você que estejam pendentes e tenham prazo a
+partir do dia atual. As credenciais permanecem no arquivo externo e não são copiadas para o
+banco da aplicação:
+
+```bash
+dukielist sync trello
+```
+
+Por padrão, o comando encontra `~/Projetos/codex-trello-env/.env`. Também é possível indicar
+outro arquivo:
+
+```bash
+dukielist sync trello --env-file /caminho/para/.env
+```
+
+Para importar todos os cartões de um quadro, mesmo que não estejam atribuídos a você, use o
+nome ou o ID. A opção pode ser repetida para combinar quadros:
+
+```bash
+dukielist sync trello --board "ESTUDOS"
+dukielist sync trello --board "Compromissos" --board "Projetos"
+```
+
+Cartões sem prazo são ignorados, pois toda tarefa do DukieList precisa de uma data. Para uma
+importação histórica ou que inclua cartões já concluídos:
+
+```bash
+dukielist sync trello --from-date 2024-01-01 --include-completed
+```
+
+O vínculo com o ID do cartão é salvo separadamente no SQLite. Assim, novas sincronizações
+atualizam data, horário, título, descrição e conclusão sem criar duplicatas. A conclusão é
+bidirecional: marcar ou reabrir uma tarefa na DukieList atualiza `dueComplete` no Trello, e a
+mudança feita no Trello aparece na DukieList. Enquanto a aplicação estiver aberta, os estados
+dos cartões vinculados são consultados automaticamente a cada minuto.
+
+Se o Trello estiver temporariamente indisponível, a mudança local permanece salva em uma fila
+persistente no SQLite e é reenviada na próxima tentativa ou ao executar `dukielist sync trello`.
+A sincronização também é coordenada entre várias instâncias abertas da DukieList; um cartão
+removido ou sem acesso não bloqueia os demais. A integração não move, arquiva nem exclui cartões.
 
 ## Dados e backup
 
