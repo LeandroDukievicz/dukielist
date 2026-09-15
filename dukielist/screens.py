@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 from typing import Any
 
 from rich.text import Text
@@ -21,7 +21,8 @@ from textual.widgets import (
 
 from . import __version__
 from .gmail_screens import GmailInboxScreen
-from .models import Category, Priority, Status, Task, ViewMode, format_date, parse_date, parse_time
+from .models import Category, Priority, Status, Task, ViewMode, format_date
+from .pickers import DatePickerScreen
 from .services import TaskFilters, TaskService, month_bounds, shift_month, week_bounds
 from .widgets import (
     AppTitle,
@@ -568,6 +569,8 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
         super().__init__()
         self.service, self.mode, self.edit_task = service, mode, task
         self.default_date = default_date or date.today()
+        self.selected_date = task.task_date if task else self.default_date
+        self.selected_time = task.task_time if task else None
 
     def compose(self) -> ComposeResult:
         task = self.edit_task
@@ -583,8 +586,36 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
             ),
             Horizontal(Static("Título da tarefa:", classes="form-label"), Input(value=task.title if task else "", placeholder="Digite o título da tarefa...", id="form-title"), classes="form-row"),
             Horizontal(Static("Descrição:", classes="form-label"), TextArea(task.description if task else "", placeholder="Digite uma descrição (opcional)...", id="form-description"), classes="form-row description-row"),
-            Horizontal(Static("Data:", classes="form-label"), Input(value=format_date(task.task_date if task else self.default_date), placeholder="DD/MM/AAAA", id="form-date"), Static("▣", classes="field-icon"), classes="form-row compact-row"),
-            Horizontal(Static("Horário:", classes="form-label"), Input(value=task.time_label if task else "", placeholder="--:--", id="form-time"), Static("◷", classes="field-icon"), classes="form-row compact-row"),
+            Horizontal(
+                Static("Data:", classes="form-label"),
+                Button(
+                    f"▣  {format_date(self.selected_date)}  — abrir calendário",
+                    id="form-date",
+                    classes="field-picker",
+                ),
+                classes="form-row compact-row",
+            ),
+            Horizontal(
+                Static("Horário:", classes="form-label"),
+                Select(
+                    [(f"{hour:02d} h", hour) for hour in range(24)],
+                    value=self.selected_time.hour if self.selected_time else Select.NULL,
+                    prompt="Sem horário",
+                    allow_blank=True,
+                    id="form-hour",
+                    classes="time-select",
+                ),
+                Static(":", classes="time-separator"),
+                Select(
+                    [(f"{minute:02d} min", minute) for minute in range(60)],
+                    value=self.selected_time.minute if self.selected_time else 0,
+                    allow_blank=False,
+                    id="form-minute",
+                    classes="time-select",
+                ),
+                Static("◷", classes="field-icon"),
+                classes="form-row compact-row time-row",
+            ),
             Horizontal(Static("Prioridade:", classes="form-label"), Select([("Baixa", Priority.LOW.value), ("Média", Priority.MEDIUM.value), ("Alta", Priority.HIGH.value)], value=task.priority.value if task else Priority.LOW.value, id="form-priority"), classes="form-row compact-row"),
             Horizontal(Static("Categoria:", classes="form-label"), Select([(item.value.capitalize(), item.value) for item in Category], value=task.category.value if task else Category.PERSONAL.value, id="form-category"), classes="form-row compact-row"),
             Horizontal(
@@ -606,7 +637,7 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
                 Button(Text("[ Cancelar ]"), id="form-cancel", classes="secondary-action"),
                 classes="form-actions",
             ),
-            Static("Use TAB para navegar entre os campos e ENTER para confirmar.", classes="modal-footer-help"),
+            Static("TAB navega • ENTER abre calendário/select • digite números para buscar hora/minuto.", classes="modal-footer-help"),
             id="form-overlay",
         )
 
@@ -628,12 +659,33 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
     def action_cancel(self) -> None:
         self.dismiss(None)
 
+    def action_pick_date(self) -> None:
+        self.app.push_screen(DatePickerScreen(self.selected_date), self._on_date_selected)
+
+    def _on_date_selected(self, selected: date | None) -> None:
+        if selected is None:
+            return
+        self.selected_date = selected
+        self.query_one("#form-date", Button).label = (
+            f"▣  {format_date(selected)}  — abrir calendário"
+        )
+        self.query_one("#form-date", Button).focus()
+
+    def _form_time(self) -> time | None:
+        hour = self.query_one("#form-hour", Select).value
+        if hour is Select.NULL or hour == getattr(Select, "BLANK", object()):
+            return None
+        minute = self.query_one("#form-minute", Select).value
+        if minute is Select.NULL or minute == getattr(Select, "BLANK", object()):
+            minute = 0
+        return time(hour=int(hour), minute=int(minute))
+
     def action_save(self) -> None:
         try:
             title = self.query_one("#form-title", Input).value
             description = self.query_one("#form-description", TextArea).text
-            task_date = parse_date(self.query_one("#form-date", Input).value)
-            task_time = parse_time(self.query_one("#form-time", Input).value)
+            task_date = self.selected_date
+            task_time = self._form_time()
             priority = Priority(self.query_one("#form-priority", Select).value)
             category = Category(self.query_one("#form-category", Select).value)
             status = Status(self.query_one("#form-status", Select).value) if self.edit_task else Status.PENDING
@@ -652,6 +704,8 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "form-save":
             self.action_save()
+        elif event.button.id == "form-date":
+            self.action_pick_date()
         elif event.button.id == "form-complete":
             self.query_one("#form-status", Select).value = Status.COMPLETED.value
             self.action_save()

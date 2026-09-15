@@ -34,6 +34,7 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 168 co
 
 - Escolher Dia, Semana ou Mês na abertura e trocar de modo a qualquer momento.
 - Criar tarefas com título, descrição, data, horário opcional, prioridade, categoria, status e modo de visualização após salvar.
+- Escolher datas em um calendário completo e definir hora/minuto em seletores próprios para teclado.
 - Editar qualquer tarefa selecionada e alterar todos os seus campos.
 - Concluir e reabrir tarefas.
 - Excluir tarefas com confirmação.
@@ -81,6 +82,12 @@ No modo Semana, `← →` escolhem o dia e `↑ ↓` percorrem todas as tarefas 
 | `Q` | Sair |
 
 Nos formulários, `CTRL+S` salva de qualquer campo; `S` também salva quando o foco não está em um campo de texto. Pressionar `ENTER` em um campo de texto também envia o formulário.
+
+No campo **Data**, pressione `ENTER` para abrir o calendário. Use `← →` para mudar o dia,
+`↑ ↓` para mudar a semana, `Page Up` / `Page Down` para trocar o mês, `T` ou `Home` para
+voltar a hoje e `ENTER` para escolher. No horário, `TAB` alterna entre os seletores de hora e
+minuto; `ENTER` abre a lista, as setas navegam e também é possível digitar, por exemplo, `14`
+ou `35` para localizar diretamente. Selecione **Sem horário** no primeiro campo para removê-lo.
 
 ## Requisitos no Ubuntu
 
@@ -260,6 +267,7 @@ dukielist/
 │   ├── __main__.py       # execução com python -m dukielist
 │   ├── app.py            # ciclo de vida do Textual
 │   ├── models.py         # Task, enums e parsing de data/hora
+│   ├── pickers.py        # calendário de seleção de data
 │   ├── gmail.py          # OAuth e leitura da API Gmail
 │   ├── gmail_screens.py  # caixa de entrada e leitor de mensagens
 │   ├── services.py       # regras de negócio, filtros e progresso

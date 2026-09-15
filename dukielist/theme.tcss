@@ -158,6 +158,18 @@ SelectCurrent { height: 1; padding: 0 1; border: none; background: #050d1d; colo
 SelectCurrent > #label, SelectCurrent.-has-value > #label { color: $text; background: transparent; }
 SelectCurrent .arrow { color: $cyan; background: transparent; }
 Input:focus, TextArea:focus, Select:focus { border: round $cyan; background: #0c2547; }
+.field-picker {
+    width: 1fr; height: 3; min-width: 0; text-align: left; color: $text;
+    border: round #466da0; background: #050d1d;
+}
+.field-picker:hover, .field-picker:focus {
+    border: round $cyan; background: #0c2547; color: #ffffff;
+}
+.time-select { width: 1fr; min-width: 12; }
+.time-separator {
+    width: 3; height: 3; color: $cyan; text-style: bold;
+    content-align: center middle; text-align: center;
+}
 .view-radio { width: 1fr; height: 3; border: none; padding: 0; layout: horizontal; }
 .view-radio > RadioButton { width: auto; margin-right: 1; border: none; background: transparent; color: $text; }
 .view-radio > RadioButton.-on .toggle--button { color: $cyan; }
@@ -171,6 +183,7 @@ Input:focus, TextArea:focus, Select:focus { border: round $cyan; background: #0c
 .narrow-layout #form-overlay .form-actions { layout: vertical; height: auto; }
 .narrow-layout #form-overlay .form-actions Button { width: 100%; margin: 0; }
 .narrow-layout #form-overlay .modal-footer-help { height: auto; min-height: 2; }
+.narrow-layout .time-select { min-width: 9; }
 .field-label { height: 1; color: #9fdcff; text-style: bold; }
 .modal-subtitle { height: auto; color: $muted; margin-bottom: 1; }
 #confirm-card, #filter-card, #help-card {
@@ -180,6 +193,23 @@ Input:focus, TextArea:focus, Select:focus { border: round $cyan; background: #0c
 .confirm-task { height: auto; border: round $line; padding: 1; margin: 1 0; text-style: bold; }
 .confirm-question { height: auto; color: #b8c8e7; }
 .help-copy { height: auto; margin: 1 0; }
+
+/* Seletor de data: calendário completo, operável por teclado e mouse. */
+#date-picker-card {
+    width: 76; max-width: 98%; height: 28; max-height: 96%; padding: 1 2;
+    border: round $cyan; border-right: round $magenta; background: $surface;
+}
+#date-picker-navigation { width: 100%; height: 3; align: center middle; }
+#date-picker-title {
+    width: 1fr; min-width: 0; height: 3; color: #9fdcff; text-style: bold;
+    content-align: center middle; text-align: center;
+}
+#date-picker-calendar {
+    width: 100%; height: 1fr; min-height: 10; border: round $line;
+    background: $bg;
+}
+#date-picker-calendar:focus { border: round $cyan; background: #091d32; }
+.narrow-layout #date-picker-card { width: 98%; height: 96%; padding: 0 1; }
 
 /* Gmail: caixa de entrada e leitor estritamente locais e somente leitura. */
 #gmail-card {

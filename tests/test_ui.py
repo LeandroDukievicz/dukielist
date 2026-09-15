@@ -1,7 +1,7 @@
 import calendar
 import tempfile
 import unittest
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -12,6 +12,7 @@ from dukielist.app import DukieListApp
 from dukielist.models import Category, Priority, ViewMode
 from dukielist.gmail import GmailClient, GmailMessage
 from dukielist.gmail_screens import GmailInboxScreen, GmailMessageScreen
+from dukielist.pickers import DatePickerScreen, shift_selected_month
 from dukielist.screens import MainScreen, TaskFormScreen, FilterScreen, HelpScreen, ConfirmDeleteScreen
 from dukielist.widgets import CalendarGrid, WeekBoard
 
@@ -187,6 +188,56 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("Conteúdo completo", self.app.screen.message.body)
                 await pilot.press("escape", "escape")
                 self.assertIsInstance(self.app.screen, MainScreen)
+
+    async def test_keyboard_date_picker_and_hour_minute_selects(self):
+        async with self.app.run_test(size=(80, 30)) as pilot:
+            await pilot.press("enter", "a")
+            form = self.app.screen
+            self.assertIsInstance(form, TaskFormScreen)
+            form.query_one("#form-title", Input).value = "Consulta"
+
+            start = form.selected_date
+            form.query_one("#form-date", Button).focus()
+            await pilot.press("enter")
+            self.assertIsInstance(self.app.screen, DatePickerScreen)
+            self.assertTrue(
+                self.app.screen.region.contains_region(
+                    self.app.screen.query_one("#date-picker-calendar").region
+                )
+            )
+            await pilot.press("right", "down", "enter")
+            self.assertIs(self.app.screen, form)
+            self.assertEqual(form.selected_date, start + timedelta(days=8))
+
+            hour = form.query_one("#form-hour", Select)
+            hour.focus()
+            await pilot.press("enter", "1", "4", "enter")
+            minute = form.query_one("#form-minute", Select)
+            minute.focus()
+            await pilot.press("enter", "3", "5", "enter")
+            self.assertEqual(hour.value, 14)
+            self.assertEqual(minute.value, 35)
+
+            form.query_one("#form-save", Button).focus()
+            await pilot.press("enter")
+            tasks = self.app.service.list_between(
+                start + timedelta(days=8), start + timedelta(days=9)
+            )
+            saved = next(task for task in tasks if task.title == "Consulta")
+            self.assertEqual(saved.task_time, time(14, 35))
+
+            await pilot.press("e")
+            edit_form = self.app.screen
+            self.assertEqual(edit_form.query_one("#form-hour", Select).value, 14)
+            self.assertEqual(edit_form.query_one("#form-minute", Select).value, 35)
+            edit_form.query_one("#form-hour", Select).value = Select.NULL
+            edit_form.query_one("#form-save", Button).focus()
+            await pilot.press("enter")
+            self.assertIsNone(self.app.service.get(saved.id).task_time)
+
+    def test_date_picker_month_shift_clamps_invalid_days(self):
+        self.assertEqual(shift_selected_month(date(2024, 1, 31), 1), date(2024, 2, 29))
+        self.assertEqual(shift_selected_month(date(2025, 12, 31), 1), date(2026, 1, 31))
 
     async def test_six_week_month_fits_supported_heights(self):
         async with self.app.run_test(size=(168, 52)) as pilot:
