@@ -20,6 +20,7 @@ from textual.widgets import (
 )
 
 from . import __version__
+from .gmail_screens import GmailInboxScreen
 from .models import Category, Priority, Status, Task, ViewMode, format_date, parse_date, parse_time
 from .services import TaskFilters, TaskService, month_bounds, shift_month, week_bounds
 from .widgets import (
@@ -138,6 +139,7 @@ class MainScreen(Screen[None]):
         ("w", "set_mode('week')", "Semana"),
         ("m", "month_command", "Mês"),
         ("t", "go_today", "Ir p/ hoje"),
+        ("g", "show_gmail", "Gmail"),
         ("a", "add_task", "Adicionar"),
         ("e", "edit_task", "Editar"),
         ("c", "toggle_task", "Concluir"),
@@ -196,6 +198,7 @@ class MainScreen(Screen[None]):
                         Horizontal(
                             Button("＋ ADICIONAR", id="add-task", classes="primary-action"),
                             Button("✎ EDITAR", id="edit-task", classes="secondary-action"),
+                            Button("✉ GMAIL", id="gmail-inbox", classes="secondary-action"),
                             id="period-actions",
                         ),
                         id="period-bar",
@@ -459,6 +462,9 @@ class MainScreen(Screen[None]):
     def action_show_help(self) -> None:
         self.app.push_screen(HelpScreen())
 
+    def action_show_gmail(self) -> None:
+        self.app.push_screen(GmailInboxScreen())
+
     def action_quit(self) -> None:
         self.app.exit()
 
@@ -472,6 +478,8 @@ class MainScreen(Screen[None]):
             self.action_add_task()
         elif button_id == "edit-task":
             self.action_edit_task()
+        elif button_id == "gmail-inbox":
+            self.action_show_gmail()
         elif button_id == "previous-period":
             self.action_previous_period()
         elif button_id == "next-period":
@@ -735,7 +743,7 @@ class HelpScreen(ModalScreen[None]):
         text.append("ESC  ", style="#ff38d1 bold")
         text.append("fechar modal\n\n")
         text.append("ATALHOS\n", style="#00e5ff bold")
-        for key, label in (("D / W / M", "alternar modos Dia, Semana e Mês"), ("T", "ir para a data de hoje"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C / S / U", "alternar, concluir ou desmarcar"), ("X / DELETE", "excluir com confirmação"), ("F / P", "filtrar categoria ou prioridade"), ("V", "ver tarefas / limpar filtros"), ("N / B", "próximo período / período anterior"), ("L", "limpar concluídas"), ("Q", "sair do DukieList")):
+        for key, label in (("D / W / M", "alternar modos Dia, Semana e Mês"), ("T", "ir para a data de hoje"), ("G", "abrir Gmail (somente leitura)"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C / S / U", "alternar, concluir ou desmarcar"), ("X / DELETE", "excluir com confirmação"), ("F / P", "filtrar categoria ou prioridade"), ("V", "ver tarefas / limpar filtros"), ("N / B", "próximo período / período anterior"), ("L", "limpar concluídas"), ("Q", "sair do DukieList")):
             text.append(f"{key:<12}", style="#ff38d1 bold")
             text.append(f" {label}\n", style="#d2def4")
         yield VerticalScroll(Static("?  ATALHOS DO DUKIELIST", classes="modal-title"), Static(text, classes="help-copy"), Button(Text("[ Fechar ]"), id="help-close", classes="primary-action"), id="help-card")

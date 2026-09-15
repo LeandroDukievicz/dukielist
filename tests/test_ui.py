@@ -1,14 +1,17 @@
 import calendar
 import tempfile
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 from rich.console import Console
 from textual.widgets import Button, Input, Select
 from dukielist.app import DukieListApp
 from dukielist.models import Category, Priority, ViewMode
+from dukielist.gmail import GmailClient, GmailMessage
+from dukielist.gmail_screens import GmailInboxScreen, GmailMessageScreen
 from dukielist.screens import MainScreen, TaskFormScreen, FilterScreen, HelpScreen, ConfirmDeleteScreen
 from dukielist.widgets import CalendarGrid, WeekBoard
 
@@ -70,7 +73,7 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
                                 self.assertFalse(tab.region.overlaps(other.region),
                                                  (size, mode, tab.id, other.id))
                         controls = [main.query_one("#" + name) for name in
-                                    ("previous-period", "next-period", "add-task", "edit-task")]
+                                    ("previous-period", "next-period", "add-task", "edit-task", "gmail-inbox")]
                         for control in controls:
                             self.assertTrue(control.parent.region.contains_region(control.region),
                                             (size, mode, control.id, control.region, control.parent.region))
@@ -90,6 +93,10 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
                         await pilot.press(key)
                         self.assertIsInstance(self.app.screen, screen_type)
                         await pilot.press("tab", "shift+tab", "escape")
+                    with patch.object(GmailInboxScreen, "action_refresh"):
+                        await pilot.press("g")
+                        self.assertIsInstance(self.app.screen, GmailInboxScreen)
+                        await pilot.press("escape")
                     main.action_set_mode("day")
                     main.anchor_date = date.today()
                     main._refresh_all()
@@ -148,6 +155,38 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("enter")
             self.assertEqual(main.anchor_date, today)
             self.assertEqual(main.selected_month_day, today)
+
+    async def test_gmail_inbox_and_message_reader(self):
+        message = GmailMessage(
+            id="message-1",
+            thread_id="thread-1",
+            sender="Equipe Dukie",
+            sender_address="dukielist@example.com",
+            subject="Mensagem de teste",
+            received_at=datetime.now().astimezone(),
+            snippet="Prévia da mensagem",
+            unread=True,
+            recipient="leandro@example.com",
+            body="Conteúdo completo e seguro.",
+        )
+        with (
+            patch.object(GmailClient, "list_inbox", return_value=[message]),
+            patch.object(GmailClient, "get_message", return_value=message),
+        ):
+            async with self.app.run_test(size=(80, 30)) as pilot:
+                await pilot.press("enter", "g")
+                await pilot.pause()
+                self.assertIsInstance(self.app.screen, GmailInboxScreen)
+                table = self.app.screen.query_one("#gmail-table")
+                self.assertEqual(table.row_count, 1)
+                self.assertTrue(self.app.screen.region.contains_region(table.region))
+
+                await pilot.press("enter")
+                await pilot.pause()
+                self.assertIsInstance(self.app.screen, GmailMessageScreen)
+                self.assertIn("Conteúdo completo", self.app.screen.message.body)
+                await pilot.press("escape", "escape")
+                self.assertIsInstance(self.app.screen, MainScreen)
 
     async def test_six_week_month_fits_supported_heights(self):
         async with self.app.run_test(size=(168, 52)) as pilot:

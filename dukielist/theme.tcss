@@ -180,3 +180,35 @@ Input:focus, TextArea:focus, Select:focus { border: round $cyan; background: #0c
 .confirm-task { height: auto; border: round $line; padding: 1; margin: 1 0; text-style: bold; }
 .confirm-question { height: auto; color: #b8c8e7; }
 .help-copy { height: auto; margin: 1 0; }
+
+/* Gmail: caixa de entrada e leitor estritamente locais e somente leitura. */
+#gmail-card {
+    width: 90%; max-width: 140; height: 90%; padding: 1 2;
+    border: round $cyan; border-right: round $magenta; background: $surface;
+}
+#gmail-status { width: 100%; height: 2; color: $muted; padding: 0 1; }
+#gmail-table {
+    width: 100%; height: 1fr; min-height: 8; margin-bottom: 1;
+    border: round $line; background: $bg;
+}
+#gmail-table:focus { border: round $cyan; }
+#gmail-message-card {
+    width: 86%; max-width: 120; height: 90%; padding: 1 2;
+    border: round $cyan; border-right: round $magenta; background: $surface;
+}
+.gmail-message-title {
+    width: 1fr; height: 3; color: $cyan; text-style: bold;
+    content-align: left middle; overflow: hidden;
+}
+#gmail-message-metadata {
+    width: 100%; height: auto; max-height: 5; padding: 0 1 1 1;
+    border-bottom: solid $line;
+}
+#gmail-body-scroll {
+    width: 100%; height: 1fr; min-height: 8; margin: 1 0;
+    padding: 1; border: round $line; background: $bg;
+}
+#gmail-message-body { width: 100%; height: auto; }
+.narrow-layout #gmail-card, .narrow-layout #gmail-message-card {
+    width: 98%; height: 96%; padding: 0 1;
+}

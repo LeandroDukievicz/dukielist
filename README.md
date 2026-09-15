@@ -45,6 +45,7 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 168 co
 - Ajustar o calendário à altura do terminal para que todos os dias do mês vigente permaneçam na tela.
 - Continuar vendo os dados após fechar e abrir o aplicativo: o SQLite é carregado automaticamente.
 - Sincronizar cartões do Trello com prazo, sem duplicar tarefas em execuções futuras.
+- Ler as mensagens recentes da caixa de entrada do Gmail sem alterar, excluir ou baixar anexos.
 
 O topo exibe apenas o nome **DukieList** em degradê. Logo abaixo, as abas de visualização dividem a faixa com um relógio **digital HH:MM:SS**, atualizado a cada segundo, com o dia da semana e a data. Usa o horário local da máquina.
 
@@ -62,6 +63,7 @@ No modo Semana, `← →` escolhem o dia e `↑ ↓` percorrem todas as tarefas 
 | `W` | Modo Semana |
 | `M` | Modo Mês |
 | `T` | Ir para a data de hoje em qualquer modo |
+| `G` | Abrir a caixa de entrada do Gmail em modo leitura |
 | `A` | Adicionar tarefa |
 | `E` | Editar tarefa selecionada |
 | `C` | Concluir ou reabrir tarefa |
@@ -155,6 +157,37 @@ dukielist --db /caminho/para/meu-dukielist.db
 
 Para fechar o programa, pressione `Q` ou `CTRL+C`.
 
+## Gmail em modo leitura
+
+O botão **Gmail** — ou a tecla `G` — abre as 30 mensagens mais recentes da caixa de entrada.
+A lista mostra mensagens não lidas, remetente, assunto e horário; `ENTER` abre o conteúdo dentro
+da DukieList. A integração solicita apenas o escopo OAuth `gmail.readonly`: ela não responde,
+apaga, arquiva nem marca mensagens e não baixa anexos automaticamente.
+
+Para autorizar sua conta pela primeira vez:
+
+1. No [Google Cloud Console](https://console.cloud.google.com/), crie ou selecione um projeto e
+   habilite a **Gmail API**.
+2. Configure a tela de consentimento OAuth. Se o aplicativo estiver em modo de teste, adicione
+   sua própria conta Google como usuário de teste.
+3. Crie uma credencial OAuth do tipo **Aplicativo para computador** e baixe o JSON.
+4. Salve o arquivo no caminho abaixo:
+
+```bash
+mkdir -p ~/.config/dukielist/google
+chmod 700 ~/.config/dukielist/google
+cp /caminho/do/arquivo-baixado.json ~/.config/dukielist/google/credentials.json
+chmod 600 ~/.config/dukielist/google/credentials.json
+```
+
+Ao abrir o Gmail pela DukieList, o navegador solicitará a autorização. O token resultante fica
+somente nesta máquina em `~/.config/dukielist/google/gmail-token.json`, com permissão restrita ao
+seu usuário, e nunca é salvo no repositório nem no banco de tarefas.
+
+Para usar caminhos diferentes, defina `DUKIELIST_GOOGLE_CREDENTIALS` e
+`DUKIELIST_GMAIL_TOKEN`. Para desconectar a conta, feche a DukieList e remova apenas o arquivo
+`gmail-token.json`; uma nova autorização será solicitada na próxima abertura.
+
 ## Sincronização com o Trello
 
 O DukieList pode importar cartões atribuídos a você que estejam pendentes e tenham prazo a
@@ -227,6 +260,8 @@ dukielist/
 │   ├── __main__.py       # execução com python -m dukielist
 │   ├── app.py            # ciclo de vida do Textual
 │   ├── models.py         # Task, enums e parsing de data/hora
+│   ├── gmail.py          # OAuth e leitura da API Gmail
+│   ├── gmail_screens.py  # caixa de entrada e leitor de mensagens
 │   ├── services.py       # regras de negócio, filtros e progresso
 │   ├── screens.py        # tela inicial, workspace e modais
 │   ├── storage.py        # schema e CRUD SQLite
@@ -235,6 +270,7 @@ dukielist/
 ├── docs/screenshots/     # screenshots documentados acima
 ├── tests/
 │   ├── test_core.py      # CRUD, períodos e relógio digital
+│   ├── test_gmail.py     # parsing MIME e acesso somente leitura ao Gmail
 │   ├── test_storage.py   # fechamento de conexões e rollback SQLite
 │   └── test_ui.py        # navegação, formulários e geometria responsiva
 ├── scripts/
