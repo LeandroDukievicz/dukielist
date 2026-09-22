@@ -66,6 +66,10 @@ class SQLiteStorage:
                 );
                 CREATE INDEX IF NOT EXISTS idx_external_task_links_task
                     ON external_task_links(task_id);
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
                 """
             )
             columns = {row["name"] for row in connection.execute("PRAGMA table_info(tasks)")}
@@ -79,6 +83,21 @@ class SQLiteStorage:
                 connection.execute(
                     "ALTER TABLE external_task_links ADD COLUMN pending_completed INTEGER"
                 )
+
+    def get_setting(self, key: str) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT value FROM app_settings WHERE key=?", (key,)
+            ).fetchone()
+        return str(row["value"]) if row else None
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, value),
+            )
 
     @staticmethod
     def _task_values(task: Task) -> tuple[object, ...]:

@@ -1,7 +1,7 @@
 import calendar
 import tempfile
 import unittest
-from datetime import date, datetime, time, timedelta
+from datetime import date, time, timedelta
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -10,16 +10,30 @@ from rich.console import Console
 from textual.widgets import Button, Input, Select
 from dukielist.app import DukieListApp
 from dukielist.models import Category, Priority, ViewMode
-from dukielist.gmail import GmailClient, GmailMessage
-from dukielist.gmail_screens import GmailInboxScreen, GmailMessageScreen
 from dukielist.pickers import DatePickerScreen, shift_selected_month
 from dukielist.screens import MainScreen, TaskFormScreen, FilterScreen, HelpScreen, ConfirmDeleteScreen
 from dukielist.widgets import CalendarGrid, WeekBoard
+from dukielist.weather import ForecastDay, WeatherForecast, WeatherError, WeatherConnectionError
+from dukielist.weather_screens import WeatherScreen
 
 
 class InterfaceTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
+        self.auto_forecast = WeatherForecast(
+            "Maringá, Paraná",
+            tuple(
+                ForecastDay(date.today() + timedelta(days=index),
+                            17 + index, 27 + index, float(index), 40 + index * 10, 61)
+                for index in range(4)
+            ),
+            automatic=True,
+        )
+        self.location_patch = patch(
+            "dukielist.screens.fetch_local_forecast", return_value=self.auto_forecast
+        )
+        self.location_patch.start()
+        self.addCleanup(self.location_patch.stop)
         self.app = DukieListApp(db_path=Path(self.temp.name) / "tasks.db")
         for index in range(9):
             self.app.service.create(
@@ -61,6 +75,15 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
             for size in ((168, 52), (140, 44), (100, 36), (80, 30)):
                 with self.subTest(size=size):
                     await pilot.resize_terminal(*size)
+                    weather_button = main.query_one("#weather-open", Button)
+                    self.assertTrue(main.query_one("#app-footer").region.contains_region(
+                        weather_button.region
+                    ), size)
+                    if size[0] >= 160:
+                        strip = main.query_one("#weather-strip")
+                        self.assertTrue(main.query_one("#view-tabs").region.contains_region(
+                            strip.region
+                        ), size)
                     for mode in ("day", "week", "month"):
                         main.action_set_mode(mode)
                         await pilot.pause()
@@ -74,7 +97,7 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
                                 self.assertFalse(tab.region.overlaps(other.region),
                                                  (size, mode, tab.id, other.id))
                         controls = [main.query_one("#" + name) for name in
-                                    ("previous-period", "next-period", "add-task", "edit-task", "gmail-inbox")]
+                                    ("previous-period", "next-period", "add-task", "edit-task")]
                         for control in controls:
                             self.assertTrue(control.parent.region.contains_region(control.region),
                                             (size, mode, control.id, control.region, control.parent.region))
@@ -94,10 +117,6 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
                         await pilot.press(key)
                         self.assertIsInstance(self.app.screen, screen_type)
                         await pilot.press("tab", "shift+tab", "escape")
-                    with patch.object(GmailInboxScreen, "action_refresh"):
-                        await pilot.press("g")
-                        self.assertIsInstance(self.app.screen, GmailInboxScreen)
-                        await pilot.press("escape")
                     main.action_set_mode("day")
                     main.anchor_date = date.today()
                     main._refresh_all()
@@ -157,37 +176,109 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(main.anchor_date, today)
             self.assertEqual(main.selected_month_day, today)
 
-    async def test_gmail_inbox_and_message_reader(self):
-        message = GmailMessage(
-            id="message-1",
-            thread_id="thread-1",
-            sender="Equipe Dukie",
-            sender_address="dukielist@example.com",
-            subject="Mensagem de teste",
-            received_at=datetime.now().astimezone(),
-            snippet="Prévia da mensagem",
-            unread=True,
-            recipient="leandro@example.com",
-            body="Conteúdo completo e seguro.",
+    async def test_weather_screen_displays_four_days_and_persists_city(self):
+        forecast = WeatherForecast(
+            "Curitiba, Paraná",
+            tuple(
+                ForecastDay(date(2026, 9, 21) + timedelta(days=index),
+                            12, 22, float(index), 50, 61)
+                for index in range(4)
+            ),
         )
-        with (
-            patch.object(GmailClient, "list_inbox", return_value=[message]),
-            patch.object(GmailClient, "get_message", return_value=message),
-        ):
+        with patch("dukielist.weather_screens.fetch_forecast", return_value=forecast):
             async with self.app.run_test(size=(80, 30)) as pilot:
-                await pilot.press("enter", "g")
-                await pilot.pause()
-                self.assertIsInstance(self.app.screen, GmailInboxScreen)
-                table = self.app.screen.query_one("#gmail-table")
-                self.assertEqual(table.row_count, 1)
-                self.assertTrue(self.app.screen.region.contains_region(table.region))
-
+                await pilot.press("enter", "r")
+                self.assertIsInstance(self.app.screen, WeatherScreen)
+                field = self.app.screen.query_one("#weather-city", Input)
+                field.value = "Curitiba, Paraná"
                 await pilot.press("enter")
                 await pilot.pause()
-                self.assertIsInstance(self.app.screen, GmailMessageScreen)
-                self.assertIn("Conteúdo completo", self.app.screen.message.body)
-                await pilot.press("escape", "escape")
+                self.assertEqual(self.app.storage.get_setting("weather_city"), "Curitiba, Paraná")
+                self.assertIn("3,0 mm", self.app.screen.query_one("#weather-results").render().plain)
+                self.assertTrue(self.app.screen.region.contains_region(
+                    self.app.screen.query_one("#weather-card").region
+                ))
+                await pilot.press("escape")
                 self.assertIsInstance(self.app.screen, MainScreen)
+                self.assertEqual(self.app.screen.weather_forecast.location, "Curitiba, Paraná")
+
+    async def test_header_forecast_arrows_show_today_and_next_three_days(self):
+        async with self.app.run_test(size=(168, 52)) as pilot:
+            await pilot.press("enter")
+            await pilot.pause()
+            main = self.app.screen
+            self.assertEqual(main.weather_forecast.location, "Maringá, Paraná")
+            self.assertIn("Hoje", main.query_one("#weather-summary").render().plain)
+            self.assertTrue(main.query_one("#weather-prev", Button).disabled)
+            for index in range(1, 4):
+                self.assertFalse(main.query_one("#weather-next", Button).disabled)
+                await pilot.click("#weather-next")
+                await pilot.pause(0.1)
+                self.assertEqual(main.weather_day_index, index)
+                self.assertIn(f"{index},0 mm", main.query_one("#weather-summary").render().plain)
+            self.assertTrue(main.query_one("#weather-next", Button).disabled)
+            await pilot.click("#weather-prev")
+            await pilot.pause(0.1)
+            self.assertEqual(main.weather_day_index, 2)
+
+    async def test_header_forecast_fits_at_visibility_boundary(self):
+        async with self.app.run_test(size=(160, 44)) as pilot:
+            await pilot.press("enter")
+            main = self.app.screen
+            await pilot.pause()
+            strip = main.query_one("#weather-strip")
+            tabs = main.query_one("#view-tabs")
+            self.assertTrue(tabs.region.contains_region(strip.region))
+            self.assertFalse(strip.region.overlaps(main.query_one("#go-today").region))
+
+    async def test_manual_city_can_return_to_current_location(self):
+        manual_forecast = WeatherForecast("Curitiba, Paraná", self.auto_forecast.days)
+        with (
+            patch("dukielist.weather_screens.fetch_forecast", return_value=manual_forecast),
+            patch("dukielist.weather_screens.fetch_local_forecast",
+                  return_value=self.auto_forecast),
+        ):
+            async with self.app.run_test(size=(168, 52)) as pilot:
+                await pilot.press("enter")
+                main = self.app.screen
+                await pilot.press("r")
+                self.app.screen.query_one("#weather-city", Input).value = "Curitiba, Paraná"
+                await pilot.press("enter")
+                await pilot.pause()
+                self.assertEqual(main.weather_forecast.location, "Curitiba, Paraná")
+                self.assertTrue(main._weather_manual_override)
+                await pilot.click("#weather-local")
+                await pilot.pause()
+                self.assertEqual(main.weather_forecast.location, "Maringá, Paraná")
+                self.assertFalse(main._weather_manual_override)
+
+    async def test_connection_error_warns_without_blocking_tasks(self):
+        with (
+            patch("dukielist.screens.fetch_local_forecast",
+                  side_effect=WeatherConnectionError("Sem internet")),
+            patch.object(self.app, "notify") as notify,
+        ):
+            async with self.app.run_test(size=(168, 52)) as pilot:
+                await pilot.press("enter")
+                await pilot.pause()
+                main = self.app.screen
+                self.assertIn("Previsão indisponível", main.query_one("#weather-summary").render().plain)
+                self.assertTrue(main.query_one("#weather-next", Button).disabled)
+                self.assertTrue(any(
+                    call.kwargs.get("title") == "Previsão do tempo" for call in notify.call_args_list
+                ))
+                await pilot.press("a")
+                self.assertIsInstance(self.app.screen, TaskFormScreen)
+
+    async def test_weather_error_does_not_save_city(self):
+        with patch("dukielist.weather_screens.fetch_forecast", side_effect=WeatherError("Sem conexão")):
+            async with self.app.run_test(size=(80, 30)) as pilot:
+                await pilot.press("enter", "r")
+                self.app.screen.query_one("#weather-city", Input).value = "Curitiba"
+                await pilot.press("enter")
+                await pilot.pause()
+                self.assertIsNone(self.app.storage.get_setting("weather_city"))
+                self.assertIn("Sem conexão", self.app.screen.query_one("#weather-status").render().plain)
 
     async def test_keyboard_date_picker_and_hour_minute_selects(self):
         async with self.app.run_test(size=(80, 30)) as pilot:

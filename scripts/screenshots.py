@@ -8,18 +8,30 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+from unittest.mock import patch
 
 from dukielist.app import DukieListApp
 from dukielist.models import Category, Priority, ViewMode
 from dukielist.screens import MainScreen, TaskFormScreen
+from dukielist.weather import ForecastDay, WeatherForecast
 from textual.widgets import Input
 
 
-async def capture(output: Path, png: bool) -> None:
+@patch("dukielist.screens.fetch_local_forecast")
+async def capture(output: Path, png: bool, mock_fetch) -> None:
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as temporary:
         app = DukieListApp(db_path=Path(temporary) / "demo.db")
         anchor = date(2026, 9, 10)
+        mock_fetch.return_value = WeatherForecast(
+            "Maringá, Paraná",
+            tuple(
+                ForecastDay(date.today() + timedelta(days=index), 17 + index, 27 + index,
+                            float(index * 2), 30 + index * 15, 61)
+                for index in range(4)
+            ),
+            automatic=True,
+        )
         titles = ["Acordar cedo", "Responder e-mails", "Estudar programação",
                   "Ir à academia", "Entregar relatório", "Revisar anotações", "Planejar semana"]
         for offset in range(-9, 21):
@@ -44,6 +56,8 @@ async def capture(output: Path, png: bool) -> None:
             await pilot.press("enter")
             main = app.screen
             assert isinstance(main, MainScreen)
+            await pilot.pause(0.1)
+            assert main.weather_forecast is not None
             main.anchor_date = main.selected_month_day = anchor
             main._refresh_all()
             await snap("02-dia")

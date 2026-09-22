@@ -2,6 +2,8 @@
 
 O DukieList é uma todo list TUI (Terminal User Interface) para organizar tarefas do dia a dia diretamente no terminal. A interface foi feita em Python com Textual, usa uma estética cyberpunk discreta e guarda tudo em um banco SQLite local.
 
+Versão atual: **1.3.0**.
+
 ## Screenshots
 
 As imagens abaixo foram geradas a partir da aplicação em um terminal de 168 colunas × 52 linhas usando dados de demonstração, seguindo a composição visual das referências.
@@ -46,13 +48,13 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 168 co
 - Ajustar o calendário à altura do terminal para que todos os dias do mês vigente permaneçam na tela.
 - Continuar vendo os dados após fechar e abrir o aplicativo: o SQLite é carregado automaticamente.
 - Sincronizar cartões do Trello com prazo, sem duplicar tarefas em execuções futuras.
-- Ler as mensagens recentes da caixa de entrada do Gmail sem alterar, excluir ou baixar anexos.
+- Ver a previsão do tempo da localização aproximada atual no cabeçalho, com setas para hoje e mais três dias, incluindo chuva estimada em mm.
 
-O topo exibe apenas o nome **DukieList** em degradê. Logo abaixo, as abas de visualização dividem a faixa com um relógio **digital HH:MM:SS**, atualizado a cada segundo, com o dia da semana e a data. Usa o horário local da máquina.
+O topo exibe apenas o nome **DukieList** em degradê. Logo abaixo, as abas de visualização dividem a faixa com a previsão do tempo e um relógio **digital HH:MM:SS**, atualizado a cada segundo, com o dia da semana e a data. O relógio usa o horário local da máquina.
 
 A composição segue as referências: marca em gradiente, abas, painéis com bordas ciano/magenta, sete colunas semanais, calendário com divisórias e indicadores coloridos, barra de progresso em gradiente e formulários com campos alinhados. A aparência final depende da fonte e do suporte a cores do terminal; efeitos gráficos de brilho e tipografia dos mockups não são reproduzidos pixel a pixel em uma TUI.
 
-Para o layout completo, use cerca de **168×52** ou mais. Também há navegação testada em **140×44, 100×36 e 80×30**. Em telas estreitas, a lateral é recolhida (a ajuda continua em `H`), a semana acompanha o dia selecionado mostrando três ou uma coluna, e formulários/calendário usam rolagem. Em telas baixas, o relógio é compacto e o progresso é ocultado para preservar as tarefas. Redimensionar não modifica seus dados.
+Para o layout completo, use cerca de **168×52** ou mais. Também há navegação testada em **140×44, 100×36 e 80×30**. Abaixo de 160 colunas, a previsão compacta é ocultada, mas continua acessível por `R` ou pelo botão no rodapé. Em telas estreitas, a lateral é recolhida (a ajuda continua em `H`), a semana acompanha o dia selecionado mostrando três ou uma coluna, e formulários/calendário usam rolagem. Em telas baixas, o relógio é compacto e o progresso é ocultado para preservar as tarefas. Redimensionar não modifica seus dados.
 
 No modo Semana, `← →` escolhem o dia e `↑ ↓` percorrem todas as tarefas — inclusive as que não cabem de uma vez. `A` cria no dia selecionado; `ENTER` edita a tarefa ou abre a criação se o dia estiver vazio. No calendário, `ENTER` abre a lista do dia selecionado. Nas abas, use `TAB` para focar, `← →` para escolher e `ENTER` para confirmar.
 
@@ -64,7 +66,7 @@ No modo Semana, `← →` escolhem o dia e `↑ ↓` percorrem todas as tarefas 
 | `W` | Modo Semana |
 | `M` | Modo Mês |
 | `T` | Ir para a data de hoje em qualquer modo |
-| `G` | Abrir a caixa de entrada do Gmail em modo leitura |
+| `R` | Abrir a previsão do tempo |
 | `A` | Adicionar tarefa |
 | `E` | Editar tarefa selecionada |
 | `C` | Concluir ou reabrir tarefa |
@@ -149,10 +151,10 @@ Depois da instalação, o comando global é:
 dukielist
 ```
 
-Ou, sem depender do `PATH`:
+Ou, a partir da pasta do projeto e sem depender do `PATH`:
 
 ```bash
-/home/leandro-dukievicz/Projetos/dukielist/.venv/bin/dukielist
+./.venv/bin/dukielist
 ```
 
 Também é possível executar como módulo ou passando um SQLite alternativo:
@@ -164,36 +166,29 @@ dukielist --db /caminho/para/meu-dukielist.db
 
 Para fechar o programa, pressione `Q` ou `CTRL+C`.
 
-## Gmail em modo leitura
+## Previsão do tempo
 
-O botão **Gmail** — ou a tecla `G` — abre as 30 mensagens mais recentes da caixa de entrada.
-A lista mostra mensagens não lidas, remetente, assunto e horário; `ENTER` abre o conteúdo dentro
-da DukieList. A integração solicita apenas o escopo OAuth `gmail.readonly`: ela não responde,
-apaga, arquiva nem marca mensagens e não baixa anexos automaticamente.
+Ao entrar na agenda, o DukieList detecta a **cidade aproximada pelo IP público** e carrega a
+previsão no cabeçalho; enquanto o programa estiver aberto, atualiza a localização e a previsão
+a cada 30 minutos. O IP público é enviado ao GeoJS para a detecção, mas não é salvo no banco
+do DukieList. Por não usar GPS, a cidade pode estar errada
+quando houver VPN, proxy ou imprecisão do provedor de internet.
 
-Para autorizar sua conta pela primeira vez:
+As setas `‹` e `›` no cabeçalho percorrem **hoje e os três dias seguintes**. Cada dia mostra
+temperatura mínima/máxima, chance de precipitação e **chuva estimada em milímetros** (chuva +
+pancadas). `—` significa que a API não informou o valor; não é confundido com zero.
 
-1. No [Google Cloud Console](https://console.cloud.google.com/), crie ou selecione um projeto e
-   habilite a **Gmail API**.
-2. Configure a tela de consentimento OAuth. Se o aplicativo estiver em modo de teste, adicione
-   sua própria conta Google como usuário de teste.
-3. Crie uma credencial OAuth do tipo **Aplicativo para computador** e baixe o JSON.
-4. Salve o arquivo no caminho abaixo:
+Pressione `R` ou selecione **☁ PREVISÃO** no rodapé para abrir os quatro dias de uma vez.
+Nessa tela, **Minha localização** refaz a detecção, e **Buscar / atualizar** permite escolher
+uma cidade manualmente (por exemplo, `Maringá, Paraná`). A escolha manual vale para a sessão
+atual e é salva como alternativa caso a detecção automática falhe; na próxima abertura, o
+aplicativo tenta detectar a localização atual novamente. Se não houver internet ou algum
+serviço falhar, aparece um aviso, sem bloquear as tarefas locais.
 
-```bash
-mkdir -p ~/.config/dukielist/google
-chmod 700 ~/.config/dukielist/google
-cp /caminho/do/arquivo-baixado.json ~/.config/dukielist/google/credentials.json
-chmod 600 ~/.config/dukielist/google/credentials.json
-```
-
-Ao abrir o Gmail pela DukieList, o navegador solicitará a autorização. O token resultante fica
-somente nesta máquina em `~/.config/dukielist/google/gmail-token.json`, com permissão restrita ao
-seu usuário, e nunca é salvo no repositório nem no banco de tarefas.
-
-Para usar caminhos diferentes, defina `DUKIELIST_GOOGLE_CREDENTIALS` e
-`DUKIELIST_GMAIL_TOKEN`. Para desconectar a conta, feche a DukieList e remova apenas o arquivo
-`gmail-token.json`; uma nova autorização será solicitada na próxima abertura.
+A detecção por IP usa [GeoJS](https://www.geojs.io/docs/v1/endpoints/geo/) e a previsão usa
+[Open-Meteo](https://open-meteo.com/en/docs). A API pública gratuita da Open-Meteo é destinada
+ao uso **não comercial** e não exige chave. Para distribuir o DukieList como produto comercial,
+é necessário contratar uma licença/API apropriada antes de usar esta integração.
 
 ## Sincronização com o Trello
 
@@ -246,11 +241,29 @@ Por padrão, as tarefas ficam em:
 ~/.local/share/dukielist/dukielist.db
 ```
 
-Esse arquivo é o backup completo. Para fazer uma cópia:
+Esse arquivo contém tarefas, vínculos externos e preferências locais. Como o SQLite usa WAL,
+faça a cópia pela API de backup do próprio SQLite, inclusive se a aplicação estiver aberta:
 
 ```bash
-cp ~/.local/share/dukielist/dukielist.db ~/dukielist-backup.db
+python3 - <<'PY'
+import sqlite3
+from pathlib import Path
+
+source_path = Path.home() / ".local/share/dukielist/dukielist.db"
+target_path = Path.home() / "dukielist-backup.db"
+if not source_path.is_file() or target_path.exists():
+    raise SystemExit("Verifique se o banco existe e se o destino ainda não existe.")
+source = sqlite3.connect(source_path)
+target = sqlite3.connect(target_path)
+try:
+    source.backup(target)
+finally:
+    source.close()
+    target.close()
+PY
 ```
+
+Credenciais do Trello ficam fora desse banco e devem ser guardadas separadamente.
 
 Para abrir uma cópia específica:
 
@@ -268,19 +281,21 @@ dukielist/
 │   ├── app.py            # ciclo de vida do Textual
 │   ├── models.py         # Task, enums e parsing de data/hora
 │   ├── pickers.py        # calendário de seleção de data
-│   ├── gmail.py          # OAuth e leitura da API Gmail
-│   ├── gmail_screens.py  # caixa de entrada e leitor de mensagens
 │   ├── services.py       # regras de negócio, filtros e progresso
 │   ├── screens.py        # tela inicial, workspace e modais
 │   ├── storage.py        # schema e CRUD SQLite
+│   ├── trello.py         # integração e sincronização de cartões
+│   ├── weather.py        # cliente e modelo da previsão do tempo
+│   ├── weather_screens.py # modal da previsão do tempo
 │   ├── widgets.py        # tabela, calendário, resumo, relógio e branding
 │   └── theme.tcss        # tema cyberpunk e layout responsivo
 ├── docs/screenshots/     # screenshots documentados acima
 ├── tests/
 │   ├── test_core.py      # CRUD, períodos e relógio digital
-│   ├── test_gmail.py     # parsing MIME e acesso somente leitura ao Gmail
 │   ├── test_storage.py   # fechamento de conexões e rollback SQLite
-│   └── test_ui.py        # navegação, formulários e geometria responsiva
+│   ├── test_trello.py    # sincronização e mapeamento de cartões
+│   ├── test_ui.py        # navegação, formulários e geometria responsiva
+│   └── test_weather.py   # previsão, chuva e preferência de cidade
 ├── scripts/
 │   ├── install.sh        # instalação e atalhos locais
 │   └── screenshots.py    # capturas reais com banco de demonstração temporário
@@ -295,7 +310,7 @@ dukielist/
 Verificar sintaxe:
 
 ```bash
-cd /home/leandro-dukievicz/Projetos/dukielist
+cd dukielist  # se ainda não estiver na pasta do projeto
 .venv/bin/python -m compileall -q dukielist
 .venv/bin/python -m unittest discover -s tests -v
 ```
@@ -316,4 +331,5 @@ env -u NO_COLOR .venv/bin/python scripts/screenshots.py --png
 
 A captura navega pelas seis telas e verifica que os modais foram abertos antes de exportar. Chrome/Chromium só é necessário para gerar os PNGs, nunca para usar o DukieList.
 
-O projeto não precisa de servidor, conta externa ou conexão com a internet depois que a dependência é instalada.
+As tarefas funcionam localmente sem servidor ou conta externa. Previsão do tempo e sincronização
+com o Trello dependem de internet; se estiverem indisponíveis, a agenda continua acessível.

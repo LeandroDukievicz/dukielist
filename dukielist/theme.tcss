@@ -44,6 +44,23 @@ Button:hover, Button:focus {
 .view-tab { min-width: 11; width: 12; height: 3; margin-right: 1; padding: 0; border: none; }
 .view-tab.active { border: round $cyan; background: #073653; color: $cyan; text-style: bold; }
 .today-tab { min-width: 14; width: 14; color: $magenta; }
+#weather-strip {
+    width: 42; min-width: 42; height: 3; margin-left: 1;
+    border-left: solid $cyan; border-right: solid $cyan;
+    background: #09283e; align: center middle;
+}
+#weather-summary {
+    width: 1fr; min-width: 0; height: 3; overflow: hidden;
+    color: $text; content-align: center middle; text-align: center;
+}
+#weather-strip .weather-arrow {
+    width: 3; min-width: 3; height: 3; padding: 0;
+    border: none; background: transparent; color: $cyan;
+}
+#weather-strip .weather-arrow:focus, #weather-strip .weather-arrow:hover {
+    background: #123a65; color: #ffffff;
+}
+#weather-strip .weather-arrow:disabled { color: #466da0; }
 .tab-hint { width: 1fr; height: 3; color: $magenta; content-align: right middle; text-align: right; }
 #period-bar {
     height: 5; margin-top: 1; padding: 0; border: round $cyan;
@@ -85,6 +102,11 @@ DataTable > .datatable--cursor { color: #ffffff; background: #064977; }
 #app-footer { layout: horizontal; height: 2; padding: 0 1; align: left middle; }
 #command-prompt { width: 1fr; height: 1; color: $cyan; }
 #status-bar { width: auto; height: 1; }
+#weather-open {
+    width: 14; min-width: 14; height: 1; margin-right: 1; padding: 0 1;
+    border: none; background: transparent; color: $cyan; text-style: bold;
+}
+#weather-open:hover, #weather-open:focus { background: #123a65; color: #ffffff; }
 .footer-brand { width: auto; color: #91b3df; }
 .footer-productivity { width: auto; margin-left: 2; }
 .footer-infinity { width: 3; margin-left: 2; color: $cyan; }
@@ -93,6 +115,8 @@ DataTable > .datatable--cursor { color: #ffffff; background: #064977; }
 .compact-layout #right-rail { display: none; }
 .compact-layout .tab-hint { display: none; }
 .compact-layout .tabs-icon, .compact-layout .tabs-label { display: none; }
+.weather-compact #weather-strip { display: none; }
+.weather-tight .tab-hint { display: none; }
 .narrow-layout #period-bar { height: 8; layout: vertical; }
 .narrow-layout #period-navigation, .narrow-layout #period-actions { width: 100%; height: 3; }
 .narrow-layout #period-actions { align: center middle; }
@@ -211,34 +235,16 @@ Input:focus, TextArea:focus, Select:focus { border: round $cyan; background: #0c
 #date-picker-calendar:focus { border: round $cyan; background: #091d32; }
 .narrow-layout #date-picker-card { width: 98%; height: 96%; padding: 0 1; }
 
-/* Gmail: caixa de entrada e leitor estritamente locais e somente leitura. */
-#gmail-card {
-    width: 90%; max-width: 140; height: 90%; padding: 1 2;
-    border: round $cyan; border-right: round $magenta; background: $surface;
+/* Previsão diária: consulta sob demanda, cidade persistida localmente. */
+#weather-card {
+    width: 82; max-width: 96%; height: auto; max-height: 94%; overflow-y: auto;
+    padding: 1 2; border: round $cyan; border-right: round $magenta;
+    background: $surface;
 }
-#gmail-status { width: 100%; height: 2; color: $muted; padding: 0 1; }
-#gmail-table {
-    width: 100%; height: 1fr; min-height: 8; margin-bottom: 1;
-    border: round $line; background: $bg;
-}
-#gmail-table:focus { border: round $cyan; }
-#gmail-message-card {
-    width: 86%; max-width: 120; height: 90%; padding: 1 2;
-    border: round $cyan; border-right: round $magenta; background: $surface;
-}
-.gmail-message-title {
-    width: 1fr; height: 3; color: $cyan; text-style: bold;
-    content-align: left middle; overflow: hidden;
-}
-#gmail-message-metadata {
-    width: 100%; height: auto; max-height: 5; padding: 0 1 1 1;
-    border-bottom: solid $line;
-}
-#gmail-body-scroll {
-    width: 100%; height: 1fr; min-height: 8; margin: 1 0;
-    padding: 1; border: round $line; background: $bg;
-}
-#gmail-message-body { width: 100%; height: auto; }
-.narrow-layout #gmail-card, .narrow-layout #gmail-message-card {
-    width: 98%; height: 96%; padding: 0 1;
-}
+#weather-city { width: 100%; }
+#weather-actions { height: 3; margin: 1 0; }
+#weather-actions Button { width: auto; margin-right: 1; }
+#weather-status { height: auto; min-height: 1; color: $muted; }
+#weather-location { height: auto; color: $cyan; text-style: bold; margin: 1 0; }
+#weather-results { height: auto; min-height: 1; }
+#weather-source { height: auto; color: $muted; margin-top: 1; }

@@ -9,4 +9,4 @@ dist/
 build/
 .DS_Store
 credentials.json
-gmail-token.json
+*-token.json

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import date, time, timedelta
 from typing import Any
 
@@ -20,10 +21,11 @@ from textual.widgets import (
 )
 
 from . import __version__
-from .gmail_screens import GmailInboxScreen
 from .models import Category, Priority, Status, Task, ViewMode, format_date
 from .pickers import DatePickerScreen
 from .services import TaskFilters, TaskService, month_bounds, shift_month, week_bounds
+from .weather import WeatherError, WeatherForecast, fetch_forecast, fetch_local_forecast
+from .weather_screens import WeatherScreen, render_compact_forecast
 from .widgets import (
     AppTitle,
     DigitalClock,
@@ -140,7 +142,7 @@ class MainScreen(Screen[None]):
         ("w", "set_mode('week')", "Semana"),
         ("m", "month_command", "Mês"),
         ("t", "go_today", "Ir p/ hoje"),
-        ("g", "show_gmail", "Gmail"),
+        ("r", "show_weather", "Previsão"),
         ("a", "add_task", "Adicionar"),
         ("e", "edit_task", "Editar"),
         ("c", "toggle_task", "Concluir"),
@@ -169,6 +171,10 @@ class MainScreen(Screen[None]):
         self.filters = TaskFilters()
         self.selected_task_id: int | None = None
         self.task_ids: dict[str, dict[str, int]] = {}
+        self.weather_forecast: WeatherForecast | None = None
+        self.weather_day_index = 0
+        self._weather_manual_override = False
+        self._last_weather_warning: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Container(
@@ -181,6 +187,12 @@ class MainScreen(Screen[None]):
                     Button(Text("[ Semana ]"), id="mode-week", classes="view-tab"),
                     Button(Text("[ Mês ]"), id="mode-month", classes="view-tab"),
                     Button(Text("Ir p/ hoje"), id="go-today", classes="view-tab today-tab"),
+                    Horizontal(
+                        Button("‹", id="weather-prev", classes="weather-arrow"),
+                        Static("Localizando…", id="weather-summary"),
+                        Button("›", id="weather-next", classes="weather-arrow"),
+                        id="weather-strip",
+                    ),
                     Static("Use ← → para navegar e ENTER para confirmar", classes="tab-hint"),
                     id="view-tabs",
                 ),
@@ -199,7 +211,6 @@ class MainScreen(Screen[None]):
                         Horizontal(
                             Button("＋ ADICIONAR", id="add-task", classes="primary-action"),
                             Button("✎ EDITAR", id="edit-task", classes="secondary-action"),
-                            Button("✉ GMAIL", id="gmail-inbox", classes="secondary-action"),
                             id="period-actions",
                         ),
                         id="period-bar",
@@ -222,6 +233,7 @@ class MainScreen(Screen[None]):
             Vertical(
                 CommandPrompt(id="command-prompt"),
                 Horizontal(
+                    Button("☁ PREVISÃO", id="weather-open"),
                     Static(f"DukieList v{__version__}", classes="footer-brand"),
                     Static("Produtividade no terminal", classes="footer-productivity"),
                     Static("∞", classes="footer-infinity"),
@@ -236,6 +248,9 @@ class MainScreen(Screen[None]):
         self._update_responsive_class()
         self._refresh_all()
         self._focus_active_view()
+        self._update_weather_strip()
+        self._refresh_local_weather()
+        self.set_interval(1800, self._refresh_local_weather)
 
     def on_resize(self, event: Resize) -> None:
         self._update_responsive_class()
@@ -247,6 +262,76 @@ class MainScreen(Screen[None]):
         self.set_class(width < 140, "compact-layout")
         self.set_class(width < 100, "narrow-layout")
         self.set_class(height < 40, "short-layout")
+        self.set_class(width < 160, "weather-compact")
+        self.set_class(160 <= width < 200, "weather-tight")
+
+    def _refresh_local_weather(self) -> None:
+        if not self._weather_manual_override:
+            self.run_worker(self._load_local_weather(), group="weather-header", exclusive=True)
+
+    def _weather_notice(self, message: str) -> None:
+        if self._last_weather_warning != message:
+            self.notify(message, title="Previsão do tempo", severity="warning", timeout=10)
+            self._last_weather_warning = message
+
+    async def _load_local_weather(self) -> None:
+        try:
+            forecast = await asyncio.to_thread(fetch_local_forecast)
+        except WeatherError as exc:
+            saved_city = self.app.storage.get_setting("weather_city")
+            if saved_city:
+                try:
+                    forecast = await asyncio.to_thread(fetch_forecast, saved_city)
+                except WeatherError:
+                    pass
+                else:
+                    if not self._weather_manual_override:
+                        self._set_weather_forecast(forecast, reset_warning=False)
+                        self._weather_notice(
+                            "Localização automática indisponível; exibindo a cidade salva."
+                        )
+                    return
+            if not self._weather_manual_override:
+                self.weather_forecast = None
+                self.weather_day_index = 0
+                self._update_weather_strip()
+                self.query_one("#weather-summary", Static).update("Previsão indisponível")
+                self._weather_notice(f"{exc} Use R para escolher uma cidade.")
+            return
+        if not self._weather_manual_override:
+            self._set_weather_forecast(forecast)
+            self._last_weather_warning = None
+
+    def _set_weather_forecast(
+        self, forecast: WeatherForecast, *, manual: bool = False, reset_warning: bool = True
+    ) -> None:
+        self.weather_forecast = forecast
+        self.weather_day_index = 0
+        self._weather_manual_override = manual
+        if reset_warning:
+            self._last_weather_warning = None
+        self._update_weather_strip()
+
+    def _update_weather_strip(self) -> None:
+        forecast = self.weather_forecast
+        self.query_one("#weather-prev", Button).disabled = not forecast or self.weather_day_index == 0
+        self.query_one("#weather-next", Button).disabled = (
+            not forecast or self.weather_day_index >= len(forecast.days) - 1
+        )
+        if forecast:
+            self.query_one("#weather-summary", Static).update(
+                render_compact_forecast(forecast, self.weather_day_index)
+            )
+
+    def action_next_weather(self) -> None:
+        if self.weather_forecast and self.weather_day_index < len(self.weather_forecast.days) - 1:
+            self.weather_day_index += 1
+            self._update_weather_strip()
+
+    def action_previous_weather(self) -> None:
+        if self.weather_forecast and self.weather_day_index > 0:
+            self.weather_day_index -= 1
+            self._update_weather_strip()
 
     def _period_range(self) -> tuple[date, date]:
         if self.mode is ViewMode.DAY:
@@ -463,8 +548,13 @@ class MainScreen(Screen[None]):
     def action_show_help(self) -> None:
         self.app.push_screen(HelpScreen())
 
-    def action_show_gmail(self) -> None:
-        self.app.push_screen(GmailInboxScreen())
+    def action_show_weather(self) -> None:
+        self.app.push_screen(WeatherScreen(
+            initial_forecast=self.weather_forecast,
+            on_forecast=lambda forecast: self._set_weather_forecast(
+                forecast, manual=not forecast.automatic
+            ),
+        ))
 
     def action_quit(self) -> None:
         self.app.exit()
@@ -479,8 +569,12 @@ class MainScreen(Screen[None]):
             self.action_add_task()
         elif button_id == "edit-task":
             self.action_edit_task()
-        elif button_id == "gmail-inbox":
-            self.action_show_gmail()
+        elif button_id == "weather-open":
+            self.action_show_weather()
+        elif button_id == "weather-prev":
+            self.action_previous_weather()
+        elif button_id == "weather-next":
+            self.action_next_weather()
         elif button_id == "previous-period":
             self.action_previous_period()
         elif button_id == "next-period":
@@ -797,7 +891,7 @@ class HelpScreen(ModalScreen[None]):
         text.append("ESC  ", style="#ff38d1 bold")
         text.append("fechar modal\n\n")
         text.append("ATALHOS\n", style="#00e5ff bold")
-        for key, label in (("D / W / M", "alternar modos Dia, Semana e Mês"), ("T", "ir para a data de hoje"), ("G", "abrir Gmail (somente leitura)"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C / S / U", "alternar, concluir ou desmarcar"), ("X / DELETE", "excluir com confirmação"), ("F / P", "filtrar categoria ou prioridade"), ("V", "ver tarefas / limpar filtros"), ("N / B", "próximo período / período anterior"), ("L", "limpar concluídas"), ("Q", "sair do DukieList")):
+        for key, label in (("D / W / M", "alternar modos Dia, Semana e Mês"), ("T", "ir para a data de hoje"), ("R", "abrir previsão do tempo"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C / S / U", "alternar, concluir ou desmarcar"), ("X / DELETE", "excluir com confirmação"), ("F / P", "filtrar categoria ou prioridade"), ("V", "ver tarefas / limpar filtros"), ("N / B", "próximo período / período anterior"), ("L", "limpar concluídas"), ("Q", "sair do DukieList")):
             text.append(f"{key:<12}", style="#ff38d1 bold")
             text.append(f" {label}\n", style="#d2def4")
         yield VerticalScroll(Static("?  ATALHOS DO DUKIELIST", classes="modal-title"), Static(text, classes="help-copy"), Button(Text("[ Fechar ]"), id="help-close", classes="primary-action"), id="help-card")
