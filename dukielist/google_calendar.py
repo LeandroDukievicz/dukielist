@@ -11,8 +11,11 @@ from pathlib import Path
 from typing import Any, Iterator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .logs import get_logger
 from .models import Category, Priority, Status, Task, ViewMode
 from .storage import SQLiteStorage
+
+logger = get_logger("google_calendar")
 
 
 SOURCE = "google_calendar"
@@ -100,6 +103,21 @@ def _google_modules():
             "pip install google-api-python-client google-auth-oauthlib google-auth-httplib2"
         ) from exc
     return Request, Credentials, InstalledAppFlow, build, HttpError
+
+
+# O Calendar sinaliza excesso de uso com 403, não com 429.
+_THROTTLED_REASONS = frozenset(
+    {"ratelimitexceeded", "userratelimitexceeded", "quotaexceeded"}
+)
+
+
+def _error_reason(exc: Any) -> str:
+    """Código do erro devolvido pelo Google, em minúsculas ("" se não vier)."""
+    details = getattr(exc, "error_details", None) or []
+    for detail in details:
+        if isinstance(detail, dict) and detail.get("reason"):
+            return str(detail["reason"]).lower()
+    return ""
 
 
 def _network_error_types() -> tuple[type[BaseException], ...]:
@@ -228,7 +246,7 @@ class GoogleCalendarClient:
             "calendar", "v3", credentials=credentials, cache_discovery=False
         )
 
-    def _call(self, request: Any) -> Any:
+    def _call(self, request: Any, *, event_scoped: bool = False) -> Any:
         try:
             return request.execute()
         except self._http_error as exc:
@@ -237,6 +255,22 @@ class GoogleCalendarClient:
                 raise GoogleEventUnavailableError(
                     "Um evento vinculado não existe mais na agenda."
                 ) from exc
+            if status == 403:
+                reason = _error_reason(exc)
+                if reason in _THROTTLED_REASONS:
+                    raise GoogleCalendarError(
+                        "O Google Calendar recusou por limite de uso. "
+                        "A sincronização tenta de novo em alguns minutos."
+                    ) from exc
+                if event_scoped:
+                    # O Google responde 403 (não 404) para eventos apagados de
+                    # vez ou organizados por outra conta. É um problema de um
+                    # evento só: tratá-lo como falta de autorização derrubava a
+                    # sincronização inteira e pedia um `auth` que não resolvia.
+                    raise GoogleEventUnavailableError(
+                        "O evento vinculado não aceita alterações "
+                        "(apagado de vez ou somente leitura)."
+                    ) from exc
             if status in {401, 403}:
                 raise GoogleAuthRequiredError(
                     "O Google recusou o acesso à agenda. "
@@ -292,12 +326,14 @@ class GoogleCalendarClient:
         return self._call(
             self._service.events().patch(
                 calendarId=self.calendar_id, eventId=event_id, body=body
-            )
+            ),
+            event_scoped=True,
         )
 
     def delete_event(self, event_id: str) -> None:
         self._call(
-            self._service.events().delete(calendarId=self.calendar_id, eventId=event_id)
+            self._service.events().delete(calendarId=self.calendar_id, eventId=event_id),
+            event_scoped=True,
         )
 
 
@@ -359,9 +395,9 @@ def _event_schedule(
             end_date = date.fromisoformat(str(end["date"])) - timedelta(days=1) if end.get("date") else start_date
         except ValueError:
             return None
-        if end_date < start_date:
-            return None
-        return start_date, end_date, None, None, True
+        # Um fim anterior ao início é incoerente, mas descartar o evento o
+        # tornaria invisível na DukieList. Vale mais tratá-lo como um só dia.
+        return start_date, max(end_date, start_date), None, None, True
 
     if start.get("dateTime"):
         try:
@@ -382,7 +418,10 @@ def _event_schedule(
         else:
             end_local = start_local + timedelta(minutes=DEFAULT_DURATION_MINUTES)
         if end_local <= start_local:
-            return None
+            # Evento de duração zero (o Google permite) ou fim incoerente: dura
+            # o padrão, como quando o evento vem sem fim nenhum. Descartá-lo
+            # faria a edição feita na agenda nunca chegar à tarefa.
+            end_local = start_local + timedelta(minutes=DEFAULT_DURATION_MINUTES)
         return (
             start_local.date(),
             end_local.date(),
@@ -532,7 +571,17 @@ def push_pending(
                 outcome = _push_delete(storage, client, entry)
             else:
                 outcome = _push_upsert(storage, client, entry, timezone_name)
-        except GoogleEventUnavailableError:
+        except GoogleAuthRequiredError:
+            # Sem autorização nenhum item passa: parar aqui evita insistir.
+            raise
+        except GoogleCalendarError:
+            # Um item problemático não pode travar a fila atrás dele. Fica
+            # pendente para a próxima rodada e os demais seguem.
+            logger.exception(
+                "Falha ao enviar a tarefa %s (operação %s).",
+                entry.get("task_id"),
+                entry.get("operation"),
+            )
             counts["failed"] += 1
             continue
         # Uma edição feita durante a chamada mantém o item na fila para a
@@ -564,6 +613,7 @@ def _pull_events(
         external_id = str(event.get("id") or "")
         if not external_id:
             counts["skipped"] += 1
+            logger.warning("Evento sem id ignorado na leitura da agenda.")
             continue
 
         linked_task_id = storage.external_task_id(SOURCE, external_id)
@@ -580,6 +630,12 @@ def _pull_events(
         task = event_to_task(event, timezone, existing)
         if task is None:
             counts["skipped"] += 1
+            logger.warning(
+                "Evento %s ignorado: não foi possível ler início/fim (%r → %r).",
+                external_id,
+                event.get("start"),
+                event.get("end"),
+            )
             continue
 
         result = storage.sync_external(
@@ -644,11 +700,22 @@ def sync_google_calendar(
 ) -> SyncStats:
     """Envia o que mudou na DukieList e traz o que mudou na agenda."""
     with _sync_guard(storage):
-        return _sync(
-            storage,
-            client,
-            start=start,
-            end=end,
-            timezone_name=timezone_name,
-            outbound_only=outbound_only,
-        )
+        try:
+            stats = _sync(
+                storage,
+                client,
+                start=start,
+                end=end,
+                timezone_name=timezone_name,
+                outbound_only=outbound_only,
+            )
+        except GoogleCalendarError:
+            # A leitura periódica roda em segundo plano e não avisa a cada
+            # tentativa: sem este registro a falha não deixaria rastro nenhum.
+            logger.exception(
+                "Sincronização com o Google Calendar falhou (outbound_only=%s).",
+                outbound_only,
+            )
+            raise
+        logger.info("Sincronização concluída: %s", stats)
+        return stats

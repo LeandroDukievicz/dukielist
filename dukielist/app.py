@@ -19,6 +19,7 @@ from .google_calendar import (
     is_authorized as google_is_authorized,
     sync_google_calendar,
 )
+from .logs import setup_logging
 from .screens import MainScreen, WelcomeScreen
 from .services import TaskService
 from .google_calendar import calendar_id_for as google_calendar_id
@@ -43,6 +44,7 @@ class DukieListApp(App[None]):
         db_path: str | Path | None = None,
     ) -> None:
         super().__init__()
+        setup_logging()
         self.storage = SQLiteStorage(db_path)
         self.service = TaskService(self.storage)
         self._trello_sync_lock = asyncio.Lock()
@@ -50,6 +52,7 @@ class DukieListApp(App[None]):
         self._google_sync_lock = asyncio.Lock()
         self._google_timer = None
         self._google_warned = False
+        self._google_read_warned = False
         self._google_auth_in_progress = False
 
     def on_mount(self) -> None:
@@ -144,8 +147,19 @@ class DukieListApp(App[None]):
                         severity="warning",
                         timeout=8,
                     )
+                elif not self._google_read_warned:
+                    # A leitura periódica falhava em silêncio: a agenda parava de
+                    # chegar sem nenhum sinal. Um aviso por sessão basta.
+                    self._google_read_warned = True
+                    self.notify(
+                        f"Não foi possível ler a agenda do Google: {exc}",
+                        title="Google Calendar",
+                        severity="warning",
+                        timeout=8,
+                    )
             else:
                 self._google_warned = False
+                self._google_read_warned = False
                 if not outbound_only and isinstance(self.screen, MainScreen):
                     self.screen._refresh_all()
                 if not notify_errors:
@@ -237,6 +251,7 @@ class DukieListApp(App[None]):
 
 
 def main() -> None:
+    setup_logging()
     parser = argparse.ArgumentParser(description="DukieList — gerenciador de tarefas no terminal")
     parser.add_argument("--db", type=Path, help="caminho alternativo para o banco SQLite")
     commands = parser.add_subparsers(dest="command")

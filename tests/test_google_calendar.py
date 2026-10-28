@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from datetime import date, time
@@ -9,6 +10,9 @@ from dukielist.google_calendar import (
     COMPLETED_PREFIX,
     DEFAULT_TIMEZONE,
     SOURCE,
+    GoogleAuthRequiredError,
+    GoogleCalendarClient,
+    GoogleCalendarError,
     GoogleEventUnavailableError,
     credentials_file,
     event_to_task,
@@ -53,9 +57,11 @@ def make_event(**changes):
 class FakeCalendarClient:
     """Agenda em memória com o mesmo contrato do cliente real."""
 
-    def __init__(self, events=None, *, missing=()):
+    def __init__(self, events=None, *, missing=(), forbidden=()):
         self.events = {event["id"]: dict(event) for event in (events or [])}
         self.missing = set(missing)
+        # Eventos que o Google recusa alterar, como os organizados por outra conta.
+        self.forbidden = set(forbidden)
         self.inserted = []
         self.patched = []
         self.deleted = []
@@ -80,6 +86,8 @@ class FakeCalendarClient:
         return dict(event)
 
     def patch_event(self, event_id, body):
+        if event_id in self.forbidden:
+            raise GoogleCalendarError("o Google recusou alterar este evento")
         if event_id in self.missing or event_id not in self.events:
             raise GoogleEventUnavailableError("evento ausente")
         self.patched.append((event_id, dict(body)))
@@ -420,6 +428,52 @@ class SyncTests(GoogleCalendarTestCase):
         self.assertIs(updated.priority, Priority.HIGH)
         self.assertIs(updated.category, Category.HEALTH)
 
+    def test_one_unwritable_event_does_not_freeze_the_queue(self):
+        # Um evento que o Google recusa alterar (403) ficava na frente da fila
+        # e impedia o envio de todos os outros, parando a sincronização.
+        blocked = self.add_task(title="Evento travado")
+        other = self.add_task(title="Segue normal", start_date=date(2026, 9, 25),
+                              end_date=date(2026, 9, 25))
+        client = FakeCalendarClient()
+        window = {"start": date(2026, 9, 1), "end": date(2026, 10, 1)}
+        sync_google_calendar(self.storage, client, **window)
+
+        external_id = self.storage.external_id_for_task(SOURCE, blocked.id)
+        client.forbidden.add(external_id)
+        self.service.toggle(blocked.id)
+        self.service.toggle(other.id)
+        stats = sync_google_calendar(self.storage, client, **window)
+
+        # O item recusado conta como falha, mas o outro chega à agenda.
+        self.assertEqual(stats.failed_remote, 1)
+        self.assertEqual(stats.updated_remote, 1)
+        other_id = self.storage.external_id_for_task(SOURCE, other.id)
+        self.assertTrue(client.events[other_id]["summary"].startswith(COMPLETED_PREFIX))
+        # Continua pendente para a próxima rodada, em vez de ser descartado.
+        pending = [e["task_id"] for e in self.storage.pending_outbox(SOURCE)]
+        self.assertEqual(pending, [blocked.id])
+
+    def test_zero_duration_event_is_imported_instead_of_dropped(self):
+        # O Google aceita eventos que começam e terminam no mesmo instante.
+        # Eles precisam virar tarefa, não desaparecer na importação.
+        client = FakeCalendarClient([
+            make_event(
+                id="instant-1",
+                start={"dateTime": "2026-09-22T09:00:00-03:00"},
+                end={"dateTime": "2026-09-22T09:00:00-03:00"},
+            )
+        ])
+        stats = sync_google_calendar(
+            self.storage, client, start=date(2026, 9, 1), end=date(2026, 10, 1)
+        )
+
+        self.assertEqual(stats.created_local, 1)
+        self.assertEqual(stats.skipped, 0)
+        imported = self.storage.list_between(date(2026, 9, 22), date(2026, 9, 23))
+        self.assertEqual(len(imported), 1)
+        self.assertEqual(imported[0].start_time, time(9, 0))
+        self.assertEqual(imported[0].end_time, time(10, 0))
+
     def test_google_edits_still_arrive_after_local_completion(self):
         task = self.add_task()
         client = FakeCalendarClient()
@@ -469,3 +523,56 @@ class SyncTests(GoogleCalendarTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HttpStatusMappingTests(unittest.TestCase):
+    """Como cada resposta do Google é traduzida para os erros do aplicativo."""
+
+    def _client(self):
+        from googleapiclient.errors import HttpError
+
+        client = GoogleCalendarClient.__new__(GoogleCalendarClient)
+        client._http_error = HttpError
+        client._network_errors = ()
+        client.calendar_id = "primary"
+        return client
+
+    def _request(self, status, reason):
+        from googleapiclient.errors import HttpError
+
+        class Response(dict):
+            def __init__(self, status):
+                super().__init__(status=status)
+                self.status = status
+                self.reason = "Forbidden"
+
+        body = json.dumps(
+            {"error": {"code": status, "message": "Forbidden",
+                       "errors": [{"domain": "global", "reason": reason,
+                                   "message": "Forbidden"}]}}
+        ).encode()
+
+        class Request:
+            def execute(self):
+                raise HttpError(Response(status), body)
+
+        return Request()
+
+    def test_403_on_an_event_marks_it_unavailable_instead_of_demanding_auth(self):
+        # Era o que travava a fila: o 403 de um evento virava erro de
+        # autorização e derrubava a sincronização inteira.
+        client = self._client()
+        with self.assertRaises(GoogleEventUnavailableError):
+            client._call(self._request(403, "forbidden"), event_scoped=True)
+
+    def test_403_outside_an_event_still_asks_for_authorization(self):
+        client = self._client()
+        with self.assertRaises(GoogleAuthRequiredError):
+            client._call(self._request(403, "forbidden"))
+
+    def test_rate_limit_is_temporary_not_an_authorization_problem(self):
+        client = self._client()
+        with self.assertRaises(GoogleCalendarError) as caught:
+            client._call(self._request(403, "rateLimitExceeded"), event_scoped=True)
+        self.assertNotIsInstance(caught.exception, GoogleAuthRequiredError)
+        self.assertNotIsInstance(caught.exception, GoogleEventUnavailableError)

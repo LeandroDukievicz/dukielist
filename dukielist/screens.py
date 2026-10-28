@@ -904,8 +904,13 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
     def _on_start_date_selected(self, selected: date | None) -> None:
         if selected is None:
             return
+        # A data de término acompanha o início, preservando a duração. Sem isso,
+        # adiar o início deixava o término atrás dele e o salvamento era recusado.
+        duration = self.end_date - self.start_date
         self.start_date = selected
-        self._update_date_button("form-start-date", selected)
+        self.end_date = selected + duration
+        self._update_date_button("form-start-date", self.start_date)
+        self._update_date_button("form-end-date", self.end_date)
         self.query_one("#form-start-date", Button).focus()
 
     def _on_end_date_selected(self, selected: date | None) -> None:
