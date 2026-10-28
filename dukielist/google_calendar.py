@@ -337,33 +337,59 @@ def task_to_event(task: Task, timezone_name: str = DEFAULT_TIMEZONE) -> dict[str
         "description": task.description,
         "extendedProperties": {"private": _private_properties(task)},
     }
-    if task.task_time is not None:
-        start = datetime.combine(task.task_date, task.task_time)
-        end = start + timedelta(minutes=DEFAULT_DURATION_MINUTES)
+    if task.all_day:
+        body["start"] = {"date": task.start_date.isoformat()}
+        body["end"] = {"date": (task.end_date + timedelta(days=1)).isoformat()}
+    else:
+        start = datetime.combine(task.start_date, task.start_time)
+        end = datetime.combine(task.end_date, task.end_time)
         body["start"] = {"dateTime": start.isoformat(), "timeZone": timezone_name}
         body["end"] = {"dateTime": end.isoformat(), "timeZone": timezone_name}
-    else:
-        body["start"] = {"date": task.task_date.isoformat()}
-        body["end"] = {"date": (task.task_date + timedelta(days=1)).isoformat()}
     return body
 
 
-def _event_moment(event: dict[str, Any], timezone: ZoneInfo) -> tuple[date, time | None] | None:
+def _event_schedule(
+    event: dict[str, Any], timezone: ZoneInfo
+) -> tuple[date, date, time | None, time | None, bool] | None:
     start = event.get("start") or {}
-    if start.get("dateTime"):
-        try:
-            moment = datetime.fromisoformat(str(start["dateTime"]).replace("Z", "+00:00"))
-        except ValueError:
-            return None
-        if moment.tzinfo is None:
-            moment = moment.replace(tzinfo=timezone)
-        local = moment.astimezone(timezone)
-        return local.date(), local.time().replace(second=0, microsecond=0)
+    end = event.get("end") or {}
     if start.get("date"):
         try:
-            return date.fromisoformat(str(start["date"])), None
+            start_date = date.fromisoformat(str(start["date"]))
+            end_date = date.fromisoformat(str(end["date"])) - timedelta(days=1) if end.get("date") else start_date
         except ValueError:
             return None
+        if end_date < start_date:
+            return None
+        return start_date, end_date, None, None, True
+
+    if start.get("dateTime"):
+        try:
+            start_moment = datetime.fromisoformat(str(start["dateTime"]).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if start_moment.tzinfo is None:
+            start_moment = start_moment.replace(tzinfo=timezone)
+        start_local = start_moment.astimezone(timezone)
+        if end.get("dateTime"):
+            try:
+                end_moment = datetime.fromisoformat(str(end["dateTime"]).replace("Z", "+00:00"))
+            except ValueError:
+                return None
+            if end_moment.tzinfo is None:
+                end_moment = end_moment.replace(tzinfo=timezone)
+            end_local = end_moment.astimezone(timezone)
+        else:
+            end_local = start_local + timedelta(minutes=DEFAULT_DURATION_MINUTES)
+        if end_local <= start_local:
+            return None
+        return (
+            start_local.date(),
+            end_local.date(),
+            start_local.time().replace(second=0, microsecond=0, tzinfo=None),
+            end_local.time().replace(second=0, microsecond=0, tzinfo=None),
+            False,
+        )
     return None
 
 
@@ -380,10 +406,10 @@ def event_to_task(
     existing: Task | None = None,
 ) -> Task | None:
     """Converte um evento em tarefa, preservando o que o Google não guarda."""
-    moment = _event_moment(event, timezone)
-    if moment is None:
+    schedule = _event_schedule(event, timezone)
+    if schedule is None:
         return None
-    task_date, task_time = moment
+    start_date, end_date, start_time, end_time, all_day = schedule
 
     summary = str(event.get("summary") or "").strip() or "Evento da agenda"
     completed_marker = summary.startswith(COMPLETED_PREFIX)
@@ -397,8 +423,11 @@ def event_to_task(
         id=existing.id if existing else None,
         title=summary,
         description=str(event.get("description") or "").strip(),
-        task_date=task_date,
-        task_time=task_time,
+        start_date=start_date,
+        end_date=end_date,
+        start_time=start_time,
+        end_time=end_time,
+        all_day=all_day,
         priority=_enum_or(
             properties.get("dukielistPriority"),
             Priority,

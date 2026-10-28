@@ -11,6 +11,7 @@ from textual.events import Resize
 from textual.screen import ModalScreen, Screen
 from textual.widgets import (
     Button,
+    Checkbox,
     DataTable,
     Input,
     RadioButton,
@@ -22,7 +23,6 @@ from textual.widgets import (
 
 from . import __version__
 from .models import Category, Priority, Status, Task, ViewMode, format_date
-from .mascot import MascotDisplay, choose_layout
 from .pickers import DatePickerScreen
 from .services import TaskFilters, TaskService, month_bounds, shift_month, week_bounds
 from .weather import WeatherError, WeatherForecast, fetch_forecast, fetch_local_forecast
@@ -53,7 +53,6 @@ def _select_value(value: Any, enum_type):
 class WelcomeScreen(Screen[None]):
     BINDINGS = [
         ("enter", "select", "Abrir"),
-        ("g", "toggle_mascot", "Mascote"),
         ("ctrl+g", "connect_google", "Google Agenda"),
         ("i", "show_about", "Sobre"),
         ("q", "quit", "Sair"),
@@ -68,8 +67,7 @@ class WelcomeScreen(Screen[None]):
         yield VerticalScroll(
             AppTitle(id="welcome-title"),
             Container(
-                Horizontal(
-                    MascotDisplay("welcome", id="welcome-mascot"),
+                Vertical(
                     Vertical(
                         Static("DUKIELIST", classes="welcome-brand"),
                         Static("[ DUKIELIST / START ]", classes="eyebrow"),
@@ -81,7 +79,7 @@ class WelcomeScreen(Screen[None]):
                             id="mode-chooser",
                         ),
                         Button("Conectar Google Agenda", id="welcome-google-connect", classes="secondary-action"),
-                        Static("← → ↑ ↓ selecionar   •   ENTER abrir   •   CTRL+G Google   •   G mascote   •   I sobre", classes="welcome-help"),
+                        Static("← → ↑ ↓ selecionar   •   ENTER abrir   •   CTRL+G Google   •   I sobre", classes="welcome-help"),
                         Static(f"SQLite local  /  teclado first  /  v{__version__}", classes="welcome-meta"),
                         id="welcome-content",
                     ),
@@ -104,10 +102,6 @@ class WelcomeScreen(Screen[None]):
         height = self.app.size.height if self.app else 50
         self.set_class(width < 100, "compact-layout")
         self.set_class(width < 76, "narrow-layout")
-        self.set_class(
-            choose_layout("welcome", width, height, self.app.mascot_enabled) is not None,
-            "welcome-mascot-visible",
-        )
 
     def _refresh_selection(self) -> None:
         for index, mode in enumerate(self.modes):
@@ -137,10 +131,6 @@ class WelcomeScreen(Screen[None]):
 
     def action_quit(self) -> None:
         self.app.exit()
-
-    def action_toggle_mascot(self) -> None:
-        self.app.toggle_mascot()
-        self._update_responsive_class()
 
     def action_show_about(self) -> None:
         self.app.push_screen(AboutScreen())
@@ -200,7 +190,6 @@ class MainScreen(Screen[None]):
         ("b", "contextual_previous", "Anterior"),
         ("h", "show_help", "Ajuda"),
         ("?", "show_help", "Ajuda"),
-        ("g", "toggle_mascot", "Mascote"),
         ("ctrl+g", "connect_google", "Google Agenda"),
         ("i", "show_about", "Sobre"),
         ("q", "quit", "Sair"),
@@ -245,7 +234,6 @@ class MainScreen(Screen[None]):
                     id="view-tabs",
                 ),
                 DigitalClock(id="header-info"),
-                    MascotDisplay("main", id="main-mascot"),
                 id="header-row",
             ),
             Horizontal(
@@ -313,15 +301,6 @@ class MainScreen(Screen[None]):
         self.set_class(height < 40, "short-layout")
         self.set_class(width < 160, "weather-compact")
         self.set_class(160 <= width < 200, "weather-tight")
-        self.set_class(
-            choose_layout("main", width, height, self.app.mascot_enabled) is not None,
-            "brand-mascot-visible",
-        )
-
-    def action_toggle_mascot(self) -> None:
-        self.app.toggle_mascot()
-        self._update_responsive_class()
-
     def action_show_about(self) -> None:
         self.app.push_screen(AboutScreen())
 
@@ -435,7 +414,7 @@ class MainScreen(Screen[None]):
         self.query_one("#month-calendar", CalendarGrid).set_calendar(
             self.anchor_date.year, self.anchor_date.month, month_tasks, self.selected_month_day
         )
-        selected_day_tasks = [task for task in month_tasks if task.task_date == self.selected_month_day]
+        selected_day_tasks = [task for task in month_tasks if task.occurs_on(self.selected_month_day)]
         self._fill_table("month-table", selected_day_tasks)
 
         mode_label = {ViewMode.DAY: "Progresso do dia", ViewMode.WEEK: "Progresso da semana", ViewMode.MONTH: "Progresso do mês"}[self.mode]
@@ -749,8 +728,8 @@ class MainScreen(Screen[None]):
         self.selected_task_id = result.get("task_id")
         saved_task = self.service.get(self.selected_task_id) if self.selected_task_id else None
         if saved_task:
-            self.anchor_date = saved_task.task_date
-            self.selected_month_day = saved_task.task_date
+            self.anchor_date = saved_task.start_date
+            self.selected_month_day = saved_task.start_date
         if result.get("view_mode"):
             self.mode = ViewMode(result["view_mode"])
         self._refresh_all()
@@ -791,8 +770,11 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
         super().__init__()
         self.service, self.mode, self.edit_task = service, mode, task
         self.default_date = default_date or date.today()
-        self.selected_date = task.task_date if task else self.default_date
-        self.selected_time = task.task_time if task else None
+        self.start_date = task.start_date if task else self.default_date
+        self.end_date = task.end_date if task else self.default_date
+        self.start_time = (task.start_time or time(9, 0)) if task else time(9, 0)
+        self.end_time = (task.end_time or time(10, 0)) if task else time(10, 0)
+        self.all_day = task.all_day if task else False
 
     def compose(self) -> ComposeResult:
         task = self.edit_task
@@ -809,34 +791,65 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
             Horizontal(Static("Título da tarefa:", classes="form-label"), Input(value=task.title if task else "", placeholder="Digite o título da tarefa...", id="form-title"), classes="form-row"),
             Horizontal(Static("Descrição:", classes="form-label"), TextArea(task.description if task else "", placeholder="Digite uma descrição (opcional)...", id="form-description"), classes="form-row description-row"),
             Horizontal(
-                Static("Data:", classes="form-label"),
+                Static("Data de início:", classes="form-label"),
                 Button(
-                    f"▣  {format_date(self.selected_date)}  — abrir calendário",
-                    id="form-date",
+                    f"▣  {format_date(self.start_date)}  — abrir calendário",
+                    id="form-start-date",
                     classes="field-picker",
                 ),
                 classes="form-row compact-row",
             ),
             Horizontal(
-                Static("Horário:", classes="form-label"),
+                Static("Horário inicial:", classes="form-label"),
                 Select(
                     [(f"{hour:02d} h", hour) for hour in range(24)],
-                    value=self.selected_time.hour if self.selected_time else Select.NULL,
-                    prompt="Sem horário",
-                    allow_blank=True,
-                    id="form-hour",
+                    value=self.start_time.hour,
+                    id="form-start-hour",
                     classes="time-select",
                 ),
                 Static(":", classes="time-separator"),
                 Select(
                     [(f"{minute:02d} min", minute) for minute in range(60)],
-                    value=self.selected_time.minute if self.selected_time else 0,
-                    allow_blank=False,
-                    id="form-minute",
+                    value=self.start_time.minute,
+                    id="form-start-minute",
                     classes="time-select",
                 ),
                 Static("◷", classes="field-icon"),
+                id="form-start-time-row",
                 classes="form-row compact-row time-row",
+            ),
+            Horizontal(
+                Static("Data de término:", classes="form-label"),
+                Button(
+                    f"▣  {format_date(self.end_date)}  — abrir calendário",
+                    id="form-end-date",
+                    classes="field-picker",
+                ),
+                classes="form-row compact-row",
+            ),
+            Horizontal(
+                Static("Horário final:", classes="form-label"),
+                Select(
+                    [(f"{hour:02d} h", hour) for hour in range(24)],
+                    value=self.end_time.hour,
+                    id="form-end-hour",
+                    classes="time-select",
+                ),
+                Static(":", classes="time-separator"),
+                Select(
+                    [(f"{minute:02d} min", minute) for minute in range(60)],
+                    value=self.end_time.minute,
+                    id="form-end-minute",
+                    classes="time-select",
+                ),
+                Static("◷", classes="field-icon"),
+                id="form-end-time-row",
+                classes="form-row compact-row time-row",
+            ),
+            Horizontal(
+                Static("Tipo:", classes="form-label"),
+                Checkbox("Evento de dia inteiro", value=self.all_day, id="form-all-day"),
+                classes="form-row compact-row",
             ),
             Horizontal(Static("Prioridade:", classes="form-label"), Select([("Baixa", Priority.LOW.value), ("Média", Priority.MEDIUM.value), ("Alta", Priority.HIGH.value)], value=task.priority.value if task else Priority.LOW.value, id="form-priority"), classes="form-row compact-row"),
             Horizontal(Static("Categoria:", classes="form-label"), Select([(item.value.capitalize(), item.value) for item in Category], value=task.category.value if task else Category.PERSONAL.value, id="form-category"), classes="form-row compact-row"),
@@ -859,12 +872,13 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
                 Button(Text("[ Cancelar ]"), id="form-cancel", classes="secondary-action"),
                 classes="form-actions",
             ),
-            Static("TAB navega • ENTER abre calendário/select • digite números para buscar hora/minuto.", classes="modal-footer-help"),
+            Static("TAB navega • ENTER abre calendário e seletores • eventos de dia inteiro ocupam todas as datas selecionadas.", classes="modal-footer-help"),
             id="form-overlay",
         )
 
     def on_mount(self) -> None:
         self._update_responsive_class()
+        self._update_time_rows()
         self.query_one("#form-title", Input).focus()
 
     def on_resize(self, event: Resize) -> None:
@@ -881,43 +895,62 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
     def action_cancel(self) -> None:
         self.dismiss(None)
 
-    def action_pick_date(self) -> None:
-        self.app.push_screen(DatePickerScreen(self.selected_date), self._on_date_selected)
+    def action_pick_start_date(self) -> None:
+        self.app.push_screen(DatePickerScreen(self.start_date), self._on_start_date_selected)
 
-    def _on_date_selected(self, selected: date | None) -> None:
+    def action_pick_end_date(self) -> None:
+        self.app.push_screen(DatePickerScreen(self.end_date), self._on_end_date_selected)
+
+    def _on_start_date_selected(self, selected: date | None) -> None:
         if selected is None:
             return
-        self.selected_date = selected
-        self.query_one("#form-date", Button).label = (
+        self.start_date = selected
+        self._update_date_button("form-start-date", selected)
+        self.query_one("#form-start-date", Button).focus()
+
+    def _on_end_date_selected(self, selected: date | None) -> None:
+        if selected is None:
+            return
+        self.end_date = selected
+        self._update_date_button("form-end-date", selected)
+        self.query_one("#form-end-date", Button).focus()
+
+    def _update_date_button(self, button_id: str, selected: date) -> None:
+        self.query_one(f"#{button_id}", Button).label = (
             f"▣  {format_date(selected)}  — abrir calendário"
         )
-        self.query_one("#form-date", Button).focus()
 
-    def _form_time(self) -> time | None:
-        hour = self.query_one("#form-hour", Select).value
-        if hour is Select.NULL or hour == getattr(Select, "BLANK", object()):
-            return None
-        minute = self.query_one("#form-minute", Select).value
-        if minute is Select.NULL or minute == getattr(Select, "BLANK", object()):
-            minute = 0
+    def _form_time(self, prefix: str) -> time:
+        hour = self.query_one(f"#{prefix}-hour", Select).value
+        minute = self.query_one(f"#{prefix}-minute", Select).value
         return time(hour=int(hour), minute=int(minute))
+
+    def _update_time_rows(self) -> None:
+        show_times = not self.query_one("#form-all-day", Checkbox).value
+        self.query_one("#form-start-time-row").display = show_times
+        self.query_one("#form-end-time-row").display = show_times
+
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        if event.checkbox.id == "form-all-day":
+            self._update_time_rows()
 
     def action_save(self) -> None:
         try:
             title = self.query_one("#form-title", Input).value
             description = self.query_one("#form-description", TextArea).text
-            task_date = self.selected_date
-            task_time = self._form_time()
+            all_day = self.query_one("#form-all-day", Checkbox).value
+            start_time = None if all_day else self._form_time("form-start")
+            end_time = None if all_day else self._form_time("form-end")
             priority = Priority(self.query_one("#form-priority", Select).value)
             category = Category(self.query_one("#form-category", Select).value)
             status = Status(self.query_one("#form-status", Select).value) if self.edit_task else Status.PENDING
             view_mode = next(button.id.removeprefix("view-") for button in self.query_one("#form-view-mode", RadioSet).query(RadioButton) if button.value)
             selected_view_mode = ViewMode(view_mode)
             if self.edit_task:
-                saved = self.service.update(self.edit_task.id, title=title, description=description, task_date=task_date, task_time=task_time, priority=priority, category=category, status=status, view_mode=selected_view_mode)
+                saved = self.service.update(self.edit_task.id, title=title, description=description, start_date=self.start_date, end_date=self.end_date, start_time=start_time, end_time=end_time, all_day=all_day, priority=priority, category=category, status=status, view_mode=selected_view_mode)
                 action = "updated"
             else:
-                saved = self.service.create(title=title, description=description, task_date=task_date, task_time=task_time, priority=priority, category=category, status=Status.PENDING, view_mode=selected_view_mode)
+                saved = self.service.create(title=title, description=description, start_date=self.start_date, end_date=self.end_date, start_time=start_time, end_time=end_time, all_day=all_day, priority=priority, category=category, status=Status.PENDING, view_mode=selected_view_mode)
                 action = "created"
             self.dismiss({"action": action, "task_id": saved.id, "view_mode": view_mode})
         except (ValueError, TypeError, StopIteration) as exc:
@@ -926,8 +959,10 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "form-save":
             self.action_save()
-        elif event.button.id == "form-date":
-            self.action_pick_date()
+        elif event.button.id == "form-start-date":
+            self.action_pick_start_date()
+        elif event.button.id == "form-end-date":
+            self.action_pick_end_date()
         elif event.button.id == "form-complete":
             self.query_one("#form-status", Select).value = Status.COMPLETED.value
             self.action_save()
@@ -1023,7 +1058,7 @@ class HelpScreen(ModalScreen[None]):
         text.append("ESC  ", style="#ff38d1 bold")
         text.append("fechar modal\n\n")
         text.append("ATALHOS\n", style="#00e5ff bold")
-        for key, label in (("D / W / M", "alternar modos Dia, Semana e Mês"), ("T", "ir para a data de hoje"), ("R", "abrir previsão do tempo"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C / S / U", "alternar, concluir ou desmarcar"), ("X / DELETE", "excluir com confirmação"), ("F / P", "filtrar categoria ou prioridade"), ("V", "ver tarefas / limpar filtros"), ("N / B", "próximo período / período anterior"), ("G", "mostrar ou ocultar o mascote"), ("CTRL+G", "conectar ou sincronizar Google Agenda"), ("I", "sobre DukieList"), ("L", "limpar concluídas"), ("Q", "sair do DukieList")):
+        for key, label in (("D / W / M", "alternar modos Dia, Semana e Mês"), ("T", "ir para a data de hoje"), ("R", "abrir previsão do tempo"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C / S / U", "alternar, concluir ou desmarcar"), ("X / DELETE", "excluir com confirmação"), ("F / P", "filtrar categoria ou prioridade"), ("V", "ver tarefas / limpar filtros"), ("N / B", "próximo período / período anterior"), ("CTRL+G", "conectar ou sincronizar Google Agenda"), ("I", "sobre DukieList"), ("L", "limpar concluídas"), ("Q", "sair do DukieList")):
             text.append(f"{key:<12}", style="#ff38d1 bold")
             text.append(f" {label}\n", style="#d2def4")
         yield VerticalScroll(Static("?  ATALHOS DO DUKIELIST", classes="modal-title"), Static(text, classes="help-copy"), Button(Text("[ Fechar ]"), id="help-close", classes="primary-action"), id="help-card")
@@ -1044,18 +1079,10 @@ class AboutScreen(ModalScreen[None]):
     def compose(self) -> ComposeResult:
         yield Vertical(
             Static("DUKIELIST", classes="about-title"),
-            Horizontal(
-                MascotDisplay("about", id="about-mascot"),
-                Vertical(
-                    Static("Agenda cyberpunk no terminal", classes="about-tagline"),
-                    Static(
-                        f"Mascote oficial renderizado pelo Chafa · v{__version__}\n"
-                        "Unicode e ANSI True Color, com ajuste ao tamanho do terminal.",
-                        classes="about-copy",
-                    ),
-                    id="about-description",
-                ),
-                id="about-layout",
+            Static("Agenda cyberpunk no terminal", classes="about-tagline"),
+            Static(
+                f"Organize tarefas por dia, semana ou mês e sincronize com o Google Agenda.\nv{__version__}",
+                classes="about-copy",
             ),
             Button(Text("[ Fechar ]"), id="about-close", classes="primary-action"),
             id="about-card",
@@ -1064,19 +1091,7 @@ class AboutScreen(ModalScreen[None]):
     def on_mount(self) -> None:
         self.query_one("#about-close", Button).focus()
 
-    def on_resize(self, event: Resize) -> None:
-        self._update_responsive_class()
-
-    def _update_responsive_class(self) -> None:
-        width = self.app.size.width if self.app else 100
-        height = self.app.size.height if self.app else 30
-        self.set_class(
-            choose_layout("about", width, height, self.app.mascot_enabled) is not None,
-            "about-mascot-visible",
-        )
-
     def on_mount(self) -> None:
-        self._update_responsive_class()
         self.query_one("#about-close", Button).focus()
 
     def action_close(self) -> None:

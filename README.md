@@ -35,8 +35,9 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 168 co
 ## O que pode ser feito
 
 - Escolher Dia, Semana ou Mês na abertura e trocar de modo a qualquer momento.
-- Criar tarefas com título, descrição, data, horário opcional, prioridade, categoria, status e modo de visualização após salvar.
-- Escolher datas em um calendário completo e definir hora/minuto em seletores próprios para teclado.
+- Criar tarefas com título, descrição, data e horário de início e término, prioridade, categoria, status e modo de visualização após salvar.
+- Marcar eventos como **dia inteiro** para ocupar todo o intervalo selecionado.
+- Escolher as datas em calendários completos e definir início e término em seletores de horário.
 - Editar qualquer tarefa selecionada e alterar todos os seus campos.
 - Concluir e reabrir tarefas.
 - Excluir tarefas com confirmação.
@@ -50,13 +51,8 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 168 co
 - Sincronizar cartões do Trello com prazo, sem duplicar tarefas em execuções futuras.
 - Espelhar as tarefas no Google Calendar e ver no DukieList os compromissos da agenda, nos dois sentidos.
 - Ver a previsão do tempo da localização aproximada atual no cabeçalho, com setas para hoje e mais três dias, incluindo chuva estimada em mm.
-- Ver o mascote cyberpunk original na abertura, na faixa da marca em terminais largos e na tela **Sobre**. A agenda oculta a arte automaticamente quando a janela fica baixa ou estreita.
 
-A faixa principal mantém a marca **DukieList** e mostra a imagem compacta do DukieList apenas quando há espaço; a arte não reduz a área de tarefas nem desloca as abas. Abaixo, as abas de visualização dividem a faixa com a previsão do tempo e um relógio **digital HH:MM:SS**, atualizado a cada segundo, com o dia da semana e a data. O relógio usa o horário local da máquina.
-
-O Chafa converte os PNGs originais em símbolos Unicode de meio-bloco com ANSI True Color. A saída passa pelo parser Rich/Textual e é armazenada em cache por tamanho e versão do arquivo; a conversão ocorre fora do loop da interface. Sem Chafa, sem TTY ou sem suporte a True Color, aparece apenas a identidade textual `DUKIELIST`.
-
-Pressione **`G`** na abertura ou na agenda para mostrar/ocultar o mascote e salvar a preferência no banco local. Também é possível definir a preferência ao iniciar com `dukielist --mascot on` ou `dukielist --mascot off`. Pressione **`I`** para abrir **Sobre**. O seletor de modo continua acessível mesmo com o mascote desativado.
+A faixa principal mantém a marca **DukieList**. As abas de visualização dividem o cabeçalho com a previsão do tempo e um relógio **digital HH:MM:SS**, atualizado a cada segundo, com o dia da semana e a data. O relógio usa o horário local da máquina. Pressione **`I`** para abrir **Sobre**.
 
 A composição segue as referências: marca em gradiente, abas, painéis com bordas ciano/magenta, sete colunas semanais, calendário com divisórias e indicadores coloridos, barra de progresso em gradiente e formulários com campos alinhados. A aparência final depende da fonte e do suporte a cores do terminal; efeitos gráficos de brilho e tipografia dos mockups não são reproduzidos pixel a pixel em uma TUI.
 
@@ -100,7 +96,6 @@ entre os controles, e `T` volta para hoje em qualquer modo.
 | `L` | Limpar tarefas concluídas do período |
 | `V` | Ver tarefas; limpa filtros ativos |
 | `N` / `B` | Próximo período / período anterior, em todos os modos |
-| `G` | Mostrar/ocultar o mascote; preferência salva entre execuções |
 | `CTRL+G` | Conectar ou sincronizar a Google Agenda |
 | `I` | Abrir a tela Sobre |
 | `← →` | Dia anterior / seguinte; nas pontas, troca a semana e o mês |
@@ -113,11 +108,12 @@ entre os controles, e `T` volta para hoje em qualquer modo.
 
 Nos formulários, `CTRL+S` salva de qualquer campo; `S` também salva quando o foco não está em um campo de texto. Pressionar `ENTER` em um campo de texto também envia o formulário.
 
-No campo **Data**, pressione `ENTER` para abrir o calendário. Use `← →` para mudar o dia,
-`↑ ↓` para mudar a semana, `Page Up` / `Page Down` para trocar o mês, `T` ou `Home` para
-voltar a hoje e `ENTER` para escolher. No horário, `TAB` alterna entre os seletores de hora e
-minuto; `ENTER` abre a lista, as setas navegam e também é possível digitar, por exemplo, `14`
-ou `35` para localizar diretamente. Selecione **Sem horário** no primeiro campo para removê-lo.
+No formulário, **Data de início** e **Data de término** abrem calendários. Use `← →` para mudar
+o dia, `↑ ↓` para mudar a semana, `Page Up` / `Page Down` para trocar o mês, `T` ou `Home`
+para voltar a hoje e `ENTER` para escolher. Desmarque **Evento de dia inteiro** para definir
+os horários de início e término; use `TAB`, `ENTER` e as setas para navegar pelos seletores.
+O término precisa ser posterior ao início. Eventos de dia inteiro ocupam todas as datas do
+intervalo, inclusive a data de término.
 
 ## Requisitos no Ubuntu
 
@@ -125,7 +121,6 @@ ou `35` para localizar diretamente. Selecione **Sem horário** no primeiro campo
 - Python 3.11 ou mais recente.
 - `python3-venv` e `python3-pip`.
 - Um terminal com suporte a UTF-8 e cores ANSI/TrueColor.
-- `chafa` para ver a imagem do mascote (sem ele, a agenda abre normalmente e exibe `DUKIELIST` como texto).
 
 ## Baixar o projeto
 
@@ -142,7 +137,7 @@ Instale os pacotes básicos:
 
 ```bash
 sudo apt update
-sudo apt install -y git python3 python3-venv python3-pip chafa
+sudo apt install -y git python3 python3-venv python3-pip
 ```
 
 ## Instalação a partir da pasta baixada
@@ -191,7 +186,6 @@ Também é possível executar como módulo ou passando um SQLite alternativo:
 ```bash
 python -m dukielist
 dukielist --db /caminho/para/meu-dukielist.db
-dukielist --mascot off
 ```
 
 Para fechar o programa, pressione `Q` ou `CTRL+C`.
@@ -340,8 +334,8 @@ DukieList após a próxima leitura automática, feita a cada dois minutos, ou ao
 
 | DukieList | Google Calendar |
 | --- | --- |
-| Tarefa com horário | Evento de uma hora a partir do horário |
-| Tarefa sem horário | Evento de dia inteiro |
+| Início e término com horário | Evento com data e hora de início e término |
+| Evento de dia inteiro | Evento de dia inteiro para todas as datas selecionadas |
 | Título | Resumo do evento, com `✔` quando concluída |
 | Descrição | Descrição do evento |
 | Prioridade, categoria e modo | Propriedades privadas do evento |
@@ -402,7 +396,6 @@ dukielist/
 │   ├── __init__.py       # versão do pacote
 │   ├── __main__.py       # execução com python -m dukielist
 │   ├── app.py            # ciclo de vida do Textual
-│   ├── mascot.py         # resolução responsiva e cache Chafa/ANSI
 │   ├── models.py         # Task, enums e parsing de data/hora
 │   ├── pickers.py        # calendário de seleção de data
 │   ├── services.py       # regras de negócio, filtros e progresso
@@ -414,15 +407,13 @@ dukielist/
 │   ├── weather_screens.py # modal da previsão do tempo
 │   ├── widgets.py        # tabela, calendário, resumo, relógio e branding
 │   └── theme.tcss        # tema cyberpunk e layout responsivo
-├── assets/mascot/        # arte original e recortes preparados
 ├── docs/screenshots/     # screenshots documentados acima
 ├── tests/
 │   ├── test_core.py      # CRUD, períodos e relógio digital
 │   ├── test_storage.py   # fechamento de conexões e rollback SQLite
 │   ├── test_google_calendar.py # conversão, envio e leitura da agenda
 │   ├── test_trello.py    # sincronização e mapeamento de cartões
-│   ├── test_ui.py        # navegação, mascote, formulários e geometria responsiva
-│   ├── test_mascot.py    # Chafa, cores, cache, fallback e breakpoints
+│   ├── test_ui.py        # navegação, formulários e geometria responsiva
 │   └── test_weather.py   # previsão, chuva e preferência de cidade
 ├── scripts/
 │   ├── install.sh        # instalação e atalhos locais

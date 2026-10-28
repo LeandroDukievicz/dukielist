@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from enum import Enum
-from typing import Any
+from typing import Any, Iterator
 
 
 class Priority(str, Enum):
@@ -36,8 +36,11 @@ class Task:
     id: int | None
     title: str
     description: str
-    task_date: date
-    task_time: time | None
+    start_date: date
+    end_date: date
+    start_time: time | None
+    end_time: time | None
+    all_day: bool
     priority: Priority
     category: Category
     status: Status
@@ -49,9 +52,33 @@ class Task:
     def completed(self) -> bool:
         return self.status is Status.COMPLETED
 
+    def occurs_on(self, day: date) -> bool:
+        if not self.all_day and self.end_date > self.start_date and self.end_time == time.min:
+            return self.start_date <= day < self.end_date
+        return self.start_date <= day <= self.end_date
+
     @property
-    def time_label(self) -> str:
-        return self.task_time.strftime("%H:%M") if self.task_time else "—"
+    def schedule_label(self) -> str:
+        if self.all_day:
+            if self.start_date == self.end_date:
+                return "Dia inteiro"
+            return f"Dia inteiro · {self.start_date:%d/%m}–{self.end_date:%d/%m}"
+        start = f"{self.start_time:%H:%M}"
+        end = f"{self.end_time:%H:%M}"
+        if self.start_date == self.end_date:
+            return f"{start}–{end}"
+        return f"{self.start_date:%d/%m} {start}–{self.end_date:%d/%m} {end}"
+
+    def days_between(self, start: date, end: date) -> Iterator[date]:
+        """Datas da tarefa no intervalo semiaberto [start, end)."""
+        current = max(self.start_date, start)
+        task_end = self.end_date
+        if not self.all_day and task_end > self.start_date and self.end_time == time.min:
+            task_end -= timedelta(days=1)
+        last = min(task_end, end - timedelta(days=1))
+        while current <= last:
+            yield current
+            current += timedelta(days=1)
 
     @classmethod
     def from_row(cls, row: Any) -> "Task":
@@ -65,8 +92,11 @@ class Task:
             id=int(row["id"]),
             title=str(row["title"]),
             description=str(row["description"] or ""),
-            task_date=date.fromisoformat(row["task_date"]),
-            task_time=time.fromisoformat(row["task_time"]) if row["task_time"] else None,
+            start_date=date.fromisoformat(row["start_date"]),
+            end_date=date.fromisoformat(row["end_date"]),
+            start_time=time.fromisoformat(row["start_time"]) if row["start_time"] else None,
+            end_time=time.fromisoformat(row["end_time"]) if row["end_time"] else None,
+            all_day=bool(row["all_day"]),
             priority=Priority(row["priority"]),
             category=Category(row["category"]),
             status=Status(row["status"]),

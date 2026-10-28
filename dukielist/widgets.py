@@ -282,8 +282,11 @@ class CalendarGrid(Static):
         self.month = month
         self.selected_date = selected
         self.tasks_by_day = {}
+        month_start = date(year, month, 1)
+        month_end = date(year + (month == 12), month % 12 + 1, 1)
         for task in tasks:
-            self.tasks_by_day.setdefault(task.task_date, []).append(task)
+            for day in task.days_between(month_start, month_end):
+                self.tasks_by_day.setdefault(day, []).append(task)
         self.refresh()
 
     def render(self) -> Table:
@@ -384,7 +387,8 @@ class WeekBoard(Static):
         self.start = start
         self.tasks_by_day = {}
         for task in tasks:
-            self.tasks_by_day.setdefault(task.task_date, []).append(task)
+            for day in task.days_between(start, start + timedelta(days=7)):
+                self.tasks_by_day.setdefault(day, []).append(task)
         self.day_index = min(max(self.day_index, 0), 6)
         current_tasks = self._current_day_tasks()
         self.task_index = min(self.task_index, max(len(current_tasks) - 1, 0))
@@ -411,6 +415,7 @@ class WeekBoard(Static):
         title = "\n".join(wrap(f"{marker} {task.title}", column_width)[:2])
         cell.append(title + "\n", style=title_style)
         cell.stylize("#39ff14" if task.completed else "#dbe8ff", start, start + 3)
+        cell.append(task.schedule_label + "\n", style="#00e5ff")
         cell.append(f"{task.priority.value.capitalize()}", style=PRIORITY_COLORS[task.priority.value])
         cell.append(" | ", style="#7390b9")
         cell.append(task.category.value.capitalize() + "\n", style=CATEGORY_COLORS[task.category.value])
@@ -513,9 +518,12 @@ class TaskTable(DataTable):
     def fill(self, tasks: list[Task]) -> None:
         self.clear(columns=False)
         for index, task in enumerate(tasks, start=1):
+            title = Text()
+            title.append(f"{task.schedule_label}  ", style="#00e5ff")
+            title.append(task.title, style="#7b8dad strike" if task.completed else "#e5edff")
             self.add_row(
                 Text(str(index), style="#7390b9"),
                 status_render(task),
-                Text(task.title, style="#7b8dad strike" if task.completed else "#e5edff"),
+                title,
                 key=str(task.id),
             )

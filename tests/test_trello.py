@@ -76,8 +76,8 @@ class TrelloMappingTest(unittest.TestCase):
 
     def test_card_mapping_uses_local_timezone_and_labels(self):
         task = card_to_task(make_card(), ZoneInfo("America/Sao_Paulo"))
-        self.assertEqual(task.task_date, date(2026, 9, 20))
-        self.assertEqual(task.task_time.isoformat(timespec="minutes"), "12:30")
+        self.assertEqual(task.start_date, date(2026, 9, 20))
+        self.assertEqual(task.start_time.isoformat(timespec="minutes"), "12:30")
         self.assertEqual(task.category, Category.HEALTH)
         self.assertEqual(task.priority, Priority.HIGH)
         self.assertEqual(task.status, Status.PENDING)

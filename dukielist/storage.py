@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 from .models import Category, Priority, Status, Task
@@ -46,8 +46,11 @@ class SQLiteStorage:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     title TEXT NOT NULL,
                     description TEXT NOT NULL DEFAULT '',
-                    task_date TEXT NOT NULL,
-                    task_time TEXT,
+                    start_date TEXT NOT NULL,
+                    end_date TEXT NOT NULL,
+                    start_time TEXT,
+                    end_time TEXT,
+                    all_day INTEGER NOT NULL DEFAULT 0,
                     priority TEXT NOT NULL,
                     category TEXT NOT NULL,
                     status TEXT NOT NULL,
@@ -55,7 +58,6 @@ class SQLiteStorage:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
-                CREATE INDEX IF NOT EXISTS idx_tasks_date ON tasks(task_date);
                 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
                 CREATE TABLE IF NOT EXISTS external_task_links (
                     source TEXT NOT NULL,
@@ -88,6 +90,55 @@ class SQLiteStorage:
             columns = {row["name"] for row in connection.execute("PRAGMA table_info(tasks)")}
             if "view_mode" not in columns:
                 connection.execute("ALTER TABLE tasks ADD COLUMN view_mode TEXT NOT NULL DEFAULT 'day'")
+            legacy_date = "task_date" in columns
+            legacy_time = "task_time" in columns
+            if "start_date" not in columns:
+                connection.execute("ALTER TABLE tasks ADD COLUMN start_date TEXT")
+                if legacy_date:
+                    connection.execute("UPDATE tasks SET start_date=task_date")
+            if "end_date" not in columns:
+                connection.execute("ALTER TABLE tasks ADD COLUMN end_date TEXT")
+                if legacy_date:
+                    connection.execute("UPDATE tasks SET end_date=task_date")
+            if "start_time" not in columns:
+                connection.execute("ALTER TABLE tasks ADD COLUMN start_time TEXT")
+                if legacy_time:
+                    connection.execute("UPDATE tasks SET start_time=task_time")
+            if "end_time" not in columns:
+                connection.execute("ALTER TABLE tasks ADD COLUMN end_time TEXT")
+            if "all_day" not in columns:
+                connection.execute("ALTER TABLE tasks ADD COLUMN all_day INTEGER NOT NULL DEFAULT 0")
+                if legacy_time:
+                    connection.execute(
+                        "UPDATE tasks SET all_day=CASE WHEN task_time IS NULL THEN 1 ELSE 0 END"
+                    )
+
+            # Old tasks had a single date and, optionally, a start time. Keep
+            # their date and turn timed entries into one-hour appointments.
+            pending = connection.execute(
+                "SELECT id, start_date, end_date, start_time, end_time, all_day "
+                "FROM tasks WHERE end_date IS NULL OR (all_day=0 AND end_time IS NULL)"
+            ).fetchall()
+            for row in pending:
+                start_date = date.fromisoformat(row["start_date"] or date.today().isoformat())
+                end_date = date.fromisoformat(row["end_date"]) if row["end_date"] else start_date
+                start_time = time.fromisoformat(row["start_time"]) if row["start_time"] else None
+                end_time = time.fromisoformat(row["end_time"]) if row["end_time"] else None
+                all_day = bool(row["all_day"])
+                if not all_day and start_time is not None and end_time is None:
+                    end = datetime.combine(start_date, start_time) + timedelta(hours=1)
+                    end_date, end_time = end.date(), end.time()
+                connection.execute(
+                    "UPDATE tasks SET end_date=?, end_time=? WHERE id=?",
+                    (end_date.isoformat(), end_time.isoformat() if end_time else None, row["id"]),
+                )
+            connection.execute("DROP INDEX IF EXISTS idx_tasks_date")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tasks_start_date ON tasks(start_date)"
+            )
+            self._legacy_task_columns = {
+                name for name in ("task_date", "task_time") if name in columns
+            }
             link_columns = {
                 row["name"]
                 for row in connection.execute("PRAGMA table_info(external_task_links)")
@@ -266,52 +317,69 @@ class SQLiteStorage:
             )
         return cursor.rowcount > 0
 
-    @staticmethod
-    def _task_values(task: Task) -> tuple[object, ...]:
-        return (
+    def _task_fields(self, task: Task) -> tuple[list[str], list[object]]:
+        fields = [
+            "title", "description", "start_date", "end_date", "start_time",
+            "end_time", "all_day", "priority", "category", "status", "view_mode",
+            "created_at", "updated_at",
+        ]
+        values: list[object] = [
             task.title,
             task.description,
-            task.task_date.isoformat(),
-            task.task_time.isoformat() if task.task_time else None,
+            task.start_date.isoformat(),
+            task.end_date.isoformat(),
+            task.start_time.isoformat() if task.start_time else None,
+            task.end_time.isoformat() if task.end_time else None,
+            int(task.all_day),
             task.priority.value,
             task.category.value,
             task.status.value,
             task.view_mode.value,
             task.created_at.isoformat(timespec="seconds"),
             task.updated_at.isoformat(timespec="seconds"),
+        ]
+        if "task_date" in self._legacy_task_columns:
+            fields.append("task_date")
+            values.append(task.start_date.isoformat())
+        if "task_time" in self._legacy_task_columns:
+            fields.append("task_time")
+            values.append(task.start_time.isoformat() if task.start_time else None)
+        return fields, values
+
+    def _insert_task(self, connection, task: Task) -> int:
+        fields, values = self._task_fields(task)
+        columns = ", ".join(fields)
+        placeholders = ", ".join("?" for _ in fields)
+        cursor = connection.execute(
+            f"INSERT INTO tasks ({columns}) VALUES ({placeholders})", values
+        )
+        return int(cursor.lastrowid)
+
+    def _update_task(self, connection, task: Task) -> None:
+        if task.id is None:
+            raise ValueError("Não é possível atualizar uma tarefa sem id.")
+        fields, values = self._task_fields(task)
+        updates = [(field, value) for field, value in zip(fields, values) if field != "created_at"]
+        assignments = ", ".join(f"{field}=?" for field, _ in updates)
+        connection.execute(
+            f"UPDATE tasks SET {assignments} WHERE id=?",
+            (*[value for _, value in updates], task.id),
         )
 
     def create(self, task: Task) -> Task:
         with self._connect() as connection:
-            cursor = connection.execute(
-                """
-                INSERT INTO tasks
-                (title, description, task_date, task_time, priority, category,
-                 status, view_mode, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                self._task_values(task),
-            )
-            task.id = int(cursor.lastrowid)
+            task.id = self._insert_task(connection, task)
             self._enqueue_upsert(connection, task.id)
         return task
 
     def update(self, task: Task) -> Task:
         if task.id is None:
             raise ValueError("Não é possível atualizar uma tarefa sem id.")
-        values = self._task_values(task)
         with self._connect() as connection:
             previous = connection.execute(
                 "SELECT status FROM tasks WHERE id=?", (task.id,)
             ).fetchone()
-            connection.execute(
-                """
-                UPDATE tasks SET title=?, description=?, task_date=?, task_time=?,
-                    priority=?, category=?, status=?, view_mode=?, updated_at=?
-                    WHERE id=?
-                """,
-                (*values[:7], values[7], values[9], task.id),
-            )
+            self._update_task(connection, task)
             if previous is not None and previous["status"] != task.status.value:
                 connection.execute(
                     """
@@ -340,8 +408,11 @@ class SQLiteStorage:
         status: Status | None = None,
         query: str = "",
     ) -> list[Task]:
-        clauses = ["task_date >= ?", "task_date < ?"]
-        params: list[object] = [start.isoformat(), end.isoformat()]
+        clauses = [
+            "start_date < ?",
+            "(end_date > ? OR (end_date = ? AND (all_day=1 OR end_time > '00:00:00')))",
+        ]
+        params: list[object] = [end.isoformat(), start.isoformat(), start.isoformat()]
         if category:
             clauses.append("category = ?")
             params.append(category.value)
@@ -361,9 +432,9 @@ class SQLiteStorage:
                 f"""
                 SELECT * FROM tasks
                 WHERE {where}
-                ORDER BY task_date ASC,
-                         CASE WHEN task_time IS NULL THEN 1 ELSE 0 END,
-                         task_time ASC, id ASC
+                ORDER BY start_date ASC,
+                         CASE WHEN all_day=1 THEN 0 ELSE 1 END,
+                         start_time ASC, end_date ASC, end_time ASC, id ASC
                 """,
                 params,
             ).fetchall()
@@ -543,16 +614,7 @@ class SQLiteStorage:
             ).fetchone()
 
             if link is None:
-                cursor = connection.execute(
-                    """
-                    INSERT INTO tasks
-                    (title, description, task_date, task_time, priority, category,
-                     status, view_mode, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    self._task_values(task),
-                )
-                task.id = int(cursor.lastrowid)
+                task.id = self._insert_task(connection, task)
                 connection.execute(
                     """
                     INSERT INTO external_task_links
@@ -570,15 +632,7 @@ class SQLiteStorage:
             if link["external_updated_at"] == external_updated_at:
                 return "unchanged"
 
-            values = self._task_values(task)
-            connection.execute(
-                """
-                UPDATE tasks SET title=?, description=?, task_date=?, task_time=?,
-                    priority=?, category=?, status=?, view_mode=?, updated_at=?
-                    WHERE id=?
-                """,
-                (*values[:8], values[9], task.id),
-            )
+            self._update_task(connection, task)
             connection.execute(
                 """
                 UPDATE external_task_links

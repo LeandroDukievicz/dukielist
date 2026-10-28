@@ -23,10 +23,3 @@ include = ["dukielist*"]
 
 [tool.setuptools.package-data]
 dukielist = ["*.tcss", "google_oauth_client.json"]
-
-[tool.setuptools.data-files]
-"share/dukielist/assets/mascot" = [
-    "assets/mascot/duck-do.png",
-    "assets/mascot/duck-do-compact.png",
-    "assets/mascot/duck-do-small.png",
-]

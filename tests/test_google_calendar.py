@@ -106,8 +106,11 @@ class GoogleCalendarTestCase(unittest.TestCase):
         values = {
             "title": "Consulta",
             "description": "Levar os exames",
-            "task_date": date(2026, 9, 20),
-            "task_time": time(15, 30),
+            "start_date": date(2026, 9, 20),
+            "end_date": date(2026, 9, 20),
+            "start_time": time(15, 30),
+            "end_time": time(16, 30),
+            "all_day": False,
             "priority": Priority.HIGH,
             "category": Category.HEALTH,
         }
@@ -137,7 +140,7 @@ class TaskToEventTests(GoogleCalendarTestCase):
         )
 
     def test_task_without_time_becomes_all_day_event(self):
-        task = self.add_task(task_time=None)
+        task = self.add_task(all_day=True, start_time=None, end_time=None)
         body = task_to_event(task)
 
         self.assertEqual(body["start"], {"date": "2026-09-20"})
@@ -156,19 +159,22 @@ class EventToTaskTests(unittest.TestCase):
         task = event_to_task(make_event(), TIMEZONE)
 
         self.assertEqual(task.title, "Consulta")
-        self.assertEqual(task.task_date, date(2026, 9, 20))
-        self.assertEqual(task.task_time, time(15, 30))
+        self.assertEqual(task.start_date, date(2026, 9, 20))
+        self.assertEqual(task.start_time, time(15, 30))
+        self.assertEqual(task.end_time, time(16, 30))
 
     def test_utc_event_is_converted(self):
         event = make_event(start={"dateTime": "2026-09-20T18:30:00Z"})
         task = event_to_task(event, TIMEZONE)
 
-        self.assertEqual(task.task_time, time(15, 30))
+        self.assertEqual(task.start_time, time(15, 30))
+        self.assertEqual(task.end_time, time(16, 30))
 
     def test_all_day_event_has_no_time(self):
         task = event_to_task(make_event(start={"date": "2026-09-20"}), TIMEZONE)
 
-        self.assertIsNone(task.task_time)
+        self.assertIsNone(task.start_time)
+        self.assertTrue(task.all_day)
 
     def test_event_without_start_is_ignored(self):
         self.assertIsNone(event_to_task(make_event(start={}), TIMEZONE))
@@ -224,8 +230,11 @@ class PushTests(GoogleCalendarTestCase):
             task.id,
             title="Consulta remarcada",
             description=task.description,
-            task_date=date(2026, 9, 21),
-            task_time=time(9, 0),
+            start_date=date(2026, 9, 21),
+            end_date=date(2026, 9, 21),
+            start_time=time(9, 0),
+            end_time=time(10, 0),
+            all_day=False,
             priority=task.priority,
             category=task.category,
             status=task.status,
@@ -308,8 +317,11 @@ class PushTests(GoogleCalendarTestCase):
             second.id,
             title="Segunda revisada",
             description=second.description,
-            task_date=second.task_date,
-            task_time=second.task_time,
+            start_date=second.start_date,
+            end_date=second.end_date,
+            start_time=second.start_time,
+            end_time=second.end_time,
+            all_day=second.all_day,
             priority=second.priority,
             category=second.category,
             status=second.status,
@@ -336,7 +348,8 @@ class SyncTests(GoogleCalendarTestCase):
         self.assertEqual(stats.created_local, 1)
         tasks = self.storage.list_between(date(2026, 9, 20), date(2026, 9, 21))
         self.assertEqual([task.title for task in tasks], ["Consulta"])
-        self.assertEqual(tasks[0].task_time, time(15, 30))
+        self.assertEqual(tasks[0].start_time, time(15, 30))
+        self.assertEqual(tasks[0].end_time, time(16, 30))
 
     def test_a_second_sync_does_not_duplicate_anything(self):
         client = FakeCalendarClient([make_event()])
@@ -400,8 +413,9 @@ class SyncTests(GoogleCalendarTestCase):
         self.assertEqual(stats.updated_local, 1)
         updated = self.storage.get(task.id)
         self.assertEqual(updated.title, "Consulta remarcada")
-        self.assertEqual(updated.task_date, date(2026, 9, 22))
-        self.assertEqual(updated.task_time, time(9, 0))
+        self.assertEqual(updated.start_date, date(2026, 9, 22))
+        self.assertEqual(updated.start_time, time(9, 0))
+        self.assertEqual(updated.end_time, time(10, 0))
         # Prioridade e categoria não existem no Google: seguem as da tarefa.
         self.assertIs(updated.priority, Priority.HIGH)
         self.assertIs(updated.category, Category.HEALTH)

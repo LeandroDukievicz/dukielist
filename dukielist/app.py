@@ -20,7 +20,6 @@ from .google_calendar import (
     sync_google_calendar,
 )
 from .screens import MainScreen, WelcomeScreen
-from .mascot import MASCOT_SETTING_KEY, MascotDisplay
 from .services import TaskService
 from .google_calendar import calendar_id_for as google_calendar_id
 from .storage import SQLiteStorage
@@ -42,14 +41,9 @@ class DukieListApp(App[None]):
     def __init__(
         self,
         db_path: str | Path | None = None,
-        *,
-        mascot_enabled: bool | None = None,
     ) -> None:
         super().__init__()
         self.storage = SQLiteStorage(db_path)
-        if mascot_enabled is not None:
-            self.storage.set_setting(MASCOT_SETTING_KEY, "on" if mascot_enabled else "off")
-        self.mascot_enabled = self.storage.get_setting(MASCOT_SETTING_KEY) != "off"
         self.service = TaskService(self.storage)
         self._trello_sync_lock = asyncio.Lock()
         self._trello_timer = None
@@ -101,16 +95,6 @@ class DukieListApp(App[None]):
             self._start_google_updates()
         finally:
             self._google_auth_in_progress = False
-
-    def toggle_mascot(self) -> None:
-        self.mascot_enabled = not self.mascot_enabled
-        self.storage.set_setting(MASCOT_SETTING_KEY, "on" if self.mascot_enabled else "off")
-        for display in self.screen.query(MascotDisplay):
-            display.set_enabled(self.mascot_enabled)
-        if isinstance(self.screen, MainScreen):
-            self.screen._update_responsive_class()
-        state = "ativado" if self.mascot_enabled else "desativado"
-        self.notify(f"Mascote {state}.", title="DukieList", severity="information")
 
     def _google_enabled(self) -> bool:
         return google_is_authorized() and GOOGLE_SOURCE in self.storage.mirror_sources()
@@ -255,11 +239,6 @@ class DukieListApp(App[None]):
 def main() -> None:
     parser = argparse.ArgumentParser(description="DukieList — gerenciador de tarefas no terminal")
     parser.add_argument("--db", type=Path, help="caminho alternativo para o banco SQLite")
-    parser.add_argument(
-        "--mascot",
-        choices=("on", "off"),
-        help="salva a preferência do mascote na agenda local",
-    )
     commands = parser.add_subparsers(dest="command")
     sync_parser = commands.add_parser("sync", help="sincronizar tarefas externas")
     providers = sync_parser.add_subparsers(dest="provider", required=True)
@@ -422,5 +401,4 @@ def main() -> None:
         )
         return
 
-    mascot_enabled = None if args.mascot is None else args.mascot == "on"
-    DukieListApp(db_path=args.db, mascot_enabled=mascot_enabled).run()
+    DukieListApp(db_path=args.db).run()

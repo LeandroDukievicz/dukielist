@@ -14,7 +14,7 @@ from dukielist.app import DukieListApp
 from dukielist.models import Category, Priority, ViewMode
 from dukielist.screens import MainScreen, TaskFormScreen
 from dukielist.weather import ForecastDay, WeatherForecast
-from textual.widgets import Input
+from textual.widgets import Checkbox, Input
 
 
 @patch("dukielist.screens.fetch_local_forecast")
@@ -40,7 +40,9 @@ async def capture(output: Path, png: bool, mock_fetch) -> None:
                 task = app.service.create(
                     title=titles[(offset + index) % len(titles)],
                     description="Organizar os detalhes e reservar tempo para esta tarefa.",
-                    task_date=day, task_time=time(7 + index * 3),
+                    start_date=day, end_date=day,
+                    start_time=time(7 + index * 3),
+                    end_time=time(8 + index * 3), all_day=False,
                     priority=list(Priority)[index], category=list(Category)[(offset + index) % 5],
                 )
                 if (offset + index) % 4 == 0:
@@ -67,6 +69,7 @@ async def capture(output: Path, png: bool, mock_fetch) -> None:
             await snap("04-mes")
             await pilot.press("d", "a")
             assert isinstance(app.screen, TaskFormScreen)
+            app.screen.query_one("#form-all-day", Checkbox).value = False
             await snap("05-adicionar")
             await pilot.press("escape", "e")
             assert isinstance(app.screen, TaskFormScreen) and app.screen.edit_task

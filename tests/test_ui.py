@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from rich.console import Console
-from textual.widgets import Button, Input, Select
+from textual.widgets import Button, Checkbox, Input, Select
 from dukielist.app import DukieListApp
 from dukielist.models import Category, Priority, ViewMode
 from dukielist.pickers import DatePickerScreen, shift_selected_month
@@ -37,8 +37,10 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
         self.app = DukieListApp(db_path=Path(self.temp.name) / "tasks.db")
         for index in range(9):
             self.app.service.create(
-                title=f"Tarefa {index}", description="Teste", task_date=date.today(),
-                task_time=None, priority=Priority.LOW, category=Category.PERSONAL)
+                title=f"Tarefa {index}", description="Teste",
+                start_date=date.today(), end_date=date.today(), start_time=None,
+                end_time=None, all_day=True, priority=Priority.LOW,
+                category=Category.PERSONAL)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -68,35 +70,15 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(main._current_task().title, "Nova tarefa")
 
-    async def test_mascot_toggle_about_and_keyboard_task_flow(self):
+    async def test_about_screen_and_keyboard_task_flow(self):
         async with self.app.run_test(size=(220, 52)) as pilot:
-            welcome = self.app.screen
-            await pilot.pause()
-            self.assertTrue(welcome.has_class("welcome-mascot-visible"))
-            await pilot.press("g")
-            self.assertFalse(self.app.mascot_enabled)
-            self.assertEqual(self.app.storage.get_setting("mascot_enabled"), "off")
-            await pilot.press("g")
-            self.assertTrue(self.app.mascot_enabled)
-
             await pilot.press("i")
             self.assertIsInstance(self.app.screen, AboutScreen)
-            await pilot.pause()
-            self.assertTrue(self.app.screen.query_one("#about-card").region.contains_region(
-                self.app.screen.query_one("#about-mascot").region
-            ))
             await pilot.press("escape")
             await pilot.press("enter")
             main = self.app.screen
             self.assertIsInstance(main, MainScreen)
-            await pilot.pause()
-            self.assertTrue(main.has_class("brand-mascot-visible"))
-            self.assertTrue(main.query_one("#header-row").region.contains_region(
-                main.query_one("#main-mascot").region
-            ))
-
-            await pilot.press("g", "a")
-            self.assertFalse(main.has_class("brand-mascot-visible"))
+            await pilot.press("a")
             self.assertIsInstance(self.app.screen, TaskFormScreen)
             await pilot.press("escape")
             self.assertIsInstance(self.app.screen, MainScreen)
@@ -134,8 +116,6 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
             for size in ((220, 52), (168, 44), (140, 44), (100, 36), (80, 30)):
                 with self.subTest(size=size):
                     await pilot.resize_terminal(*size)
-                    mascot_expected = size[0] >= 220 and size[1] >= 44
-                    self.assertEqual(main.has_class("brand-mascot-visible"), mascot_expected)
                     self.assertEqual(len(main.query("#weather-open")), 0)
                     if size[0] >= 160:
                         strip = main.query_one("#weather-strip")
@@ -437,8 +417,8 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsInstance(form, TaskFormScreen)
             form.query_one("#form-title", Input).value = "Consulta"
 
-            start = form.selected_date
-            form.query_one("#form-date", Button).focus()
+            start = form.start_date
+            form.query_one("#form-start-date", Button).focus()
             await pilot.press("enter")
             self.assertIsInstance(self.app.screen, DatePickerScreen)
             self.assertTrue(
@@ -448,16 +428,21 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
             )
             await pilot.press("right", "down", "enter")
             self.assertIs(self.app.screen, form)
-            self.assertEqual(form.selected_date, start + timedelta(days=8))
+            self.assertEqual(form.start_date, start + timedelta(days=8))
 
-            hour = form.query_one("#form-hour", Select)
+            self.assertFalse(form.query_one("#form-all-day", Checkbox).value)
+
+            hour = form.query_one("#form-start-hour", Select)
             hour.focus()
             await pilot.press("enter", "1", "4", "enter")
-            minute = form.query_one("#form-minute", Select)
+            minute = form.query_one("#form-start-minute", Select)
             minute.focus()
             await pilot.press("enter", "3", "5", "enter")
             self.assertEqual(hour.value, 14)
             self.assertEqual(minute.value, 35)
+
+            form.query_one("#form-end-hour", Select).value = 15
+            form.query_one("#form-end-minute", Select).value = 35
 
             form.query_one("#form-save", Button).focus()
             await pilot.press("enter")
@@ -465,16 +450,18 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
                 start + timedelta(days=8), start + timedelta(days=9)
             )
             saved = next(task for task in tasks if task.title == "Consulta")
-            self.assertEqual(saved.task_time, time(14, 35))
+            self.assertEqual(saved.start_time, time(14, 35))
+            self.assertEqual(saved.end_time, time(15, 35))
 
             await pilot.press("e")
             edit_form = self.app.screen
-            self.assertEqual(edit_form.query_one("#form-hour", Select).value, 14)
-            self.assertEqual(edit_form.query_one("#form-minute", Select).value, 35)
-            edit_form.query_one("#form-hour", Select).value = Select.NULL
+            self.assertEqual(edit_form.query_one("#form-start-hour", Select).value, 14)
+            self.assertEqual(edit_form.query_one("#form-start-minute", Select).value, 35)
+            edit_form.query_one("#form-all-day", Checkbox).value = True
             edit_form.query_one("#form-save", Button).focus()
             await pilot.press("enter")
-            self.assertIsNone(self.app.service.get(saved.id).task_time)
+            self.assertTrue(self.app.service.get(saved.id).all_day)
+            self.assertIsNone(self.app.service.get(saved.id).start_time)
 
     def test_date_picker_month_shift_clamps_invalid_days(self):
         self.assertEqual(shift_selected_month(date(2024, 1, 31), 1), date(2024, 2, 29))

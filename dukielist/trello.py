@@ -6,7 +6,7 @@ import unicodedata
 import fcntl
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable
 from urllib.error import HTTPError, URLError
@@ -273,13 +273,17 @@ def card_to_task(card: dict[str, Any], timezone: ZoneInfo) -> Task:
         metadata.append(f"Link: {card['url']}")
     original_description = str(card.get("desc") or "").strip()
     description = "\n\n".join(part for part in (original_description, "\n".join(metadata)) if part)
+    due_end = due + timedelta(hours=1)
     now = datetime.now()
     return Task(
         id=None,
         title=str(card.get("name") or "Cartão do Trello").strip(),
         description=description,
-        task_date=due.date(),
-        task_time=due.time().replace(second=0, microsecond=0, tzinfo=None),
+        start_date=due.date(),
+        end_date=due_end.date(),
+        start_time=due.time().replace(second=0, microsecond=0, tzinfo=None),
+        end_time=due_end.time().replace(second=0, microsecond=0, tzinfo=None),
+        all_day=False,
         priority=_priority(card),
         category=_category(card),
         status=Status.COMPLETED if card.get("dueComplete") else Status.PENDING,
@@ -431,7 +435,7 @@ def _sync_trello(
 
         linked = storage.external_task_id("trello", external_id) is not None
         task = card_to_task(card, timezone)
-        if not linked and task.task_date < start_date:
+        if not linked and task.start_date < start_date:
             counts["skipped_before_start"] += 1
             continue
         if not linked and task.completed and not include_completed:
