@@ -569,6 +569,11 @@ class SQLiteStorage:
                 return False
 
             status = Status.COMPLETED if completed else Status.PENDING
+            # "Não concluída" é uma pendência que o usuário já resolveu em
+            # definitivo. Como as integrações só conhecem feito/não feito, uma
+            # leitura remota de "não feito" não deve apagar essa decisão.
+            if not completed and link["status"] == Status.MISSED.value:
+                status = Status.MISSED
             changed = link["status"] != status.value
             if changed:
                 connection.execute(

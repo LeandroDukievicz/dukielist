@@ -36,6 +36,8 @@ from .widgets import (
     ModeCard,
     ProgressPanel,
     SidebarPanel,
+    STATUS_LEGEND,
+    STATUS_MARKERS,
     TaskTable,
     WeekBoard,
 )
@@ -169,6 +171,12 @@ class MonthView(Vertical):
 class MainScreen(Screen[None]):
     ARROW_KEYS = frozenset({"left", "right", "up", "down"})
 
+    STATUS_NOTICES = {
+        Status.COMPLETED: "Tarefa concluída.",
+        Status.PENDING: "Tarefa reaberta.",
+        Status.MISSED: "Tarefa marcada como não concluída.",
+    }
+
     BINDINGS = [
         ("d", "day_command", "Dia"),
         ("w", "set_mode('week')", "Semana"),
@@ -180,6 +188,7 @@ class MainScreen(Screen[None]):
         ("c", "toggle_task", "Concluir"),
         ("s", "mark_completed", "Marcar concluída"),
         ("u", "mark_pending", "Desmarcar"),
+        ("k", "mark_missed", "Não concluída"),
         ("x", "delete_task", "Excluir"),
         ("delete", "delete_task", "Excluir"),
         ("f", "filter_category", "Filtrar categoria"),
@@ -505,25 +514,37 @@ class MainScreen(Screen[None]):
         if not task:
             self.notify("Selecione uma tarefa primeiro.", title="Nenhuma tarefa", severity="warning")
             return
+        self._apply_status(task, Status.PENDING if task.completed else Status.COMPLETED)
+
+    def _apply_status(self, task: Task, status: Status) -> None:
         try:
-            updated = self.service.toggle(task.id)
-            self.notify("Tarefa concluída." if updated.completed else "Tarefa reaberta.", title="Atualizado", severity="information")
-            self._refresh_all()
-            request_sync = getattr(self.app, "request_external_sync", None)
-            if request_sync is not None:
-                request_sync()
+            updated = self.service.set_status(task.id, status)
         except ValueError as exc:
             self.notify(str(exc), title="Erro", severity="error")
+            return
+        self.notify(self.STATUS_NOTICES[updated.status], title="Atualizado", severity="information")
+        self._refresh_all()
+        request_sync = getattr(self.app, "request_external_sync", None)
+        if request_sync is not None:
+            request_sync()
+
+    def _set_selected_status(self, status: Status) -> None:
+        task = self._current_task()
+        if not task:
+            self.notify("Selecione uma tarefa primeiro.", title="Nenhuma tarefa", severity="warning")
+            return
+        if task.status is not status:
+            self._apply_status(task, status)
 
     def action_mark_completed(self) -> None:
-        task = self._current_task()
-        if task and not task.completed:
-            self.action_toggle_task()
+        self._set_selected_status(Status.COMPLETED)
 
     def action_mark_pending(self) -> None:
-        task = self._current_task()
-        if task and task.completed:
-            self.action_toggle_task()
+        self._set_selected_status(Status.PENDING)
+
+    def action_mark_missed(self) -> None:
+        """Registra que o prazo passou e a tarefa não foi concluída."""
+        self._set_selected_status(Status.MISSED)
 
     def action_delete_task(self) -> None:
         task = self._current_task()
@@ -864,11 +885,17 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
                 ),
                 classes="form-row radio-row",
             ),
-            *([Horizontal(Static("Status:", classes="form-label"), Select([("Pendente", Status.PENDING.value), ("Concluída", Status.COMPLETED.value)], value=task.status.value, id="form-status"), classes="form-row compact-row")] if editing else []),
+            *([Horizontal(Static("Status:", classes="form-label"), Select([(item.value.capitalize(), item.value) for item in Status], value=task.status.value, id="form-status"), classes="form-row compact-row")] if editing else []),
             Static("", classes="modal-divider"),
+            # As duas conclusões ficam em uma linha própria: quatro botões não
+            # cabem lado a lado nas larguras de terminal que a interface cobre.
+            *([Horizontal(
+                Button(Text("[ Marcar como concluída ]"), id="form-complete", classes="complete-action"),
+                Button(Text("[ Marcar como não concluída ]"), id="form-missed", classes="missed-action"),
+                classes="form-actions status-actions",
+            )] if editing else []),
             Horizontal(
                 Button(Text("[ Salvar alterações ]" if editing else "[ Salvar ]"), id="form-save", classes="primary-action"),
-                *([Button(Text("[ Marcar como concluída ]"), id="form-complete", classes="complete-action")] if editing else []),
                 Button(Text("[ Cancelar ]"), id="form-cancel", classes="secondary-action"),
                 classes="form-actions",
             ),
@@ -971,6 +998,9 @@ class TaskFormScreen(ModalScreen[dict[str, Any] | None]):
         elif event.button.id == "form-complete":
             self.query_one("#form-status", Select).value = Status.COMPLETED.value
             self.action_save()
+        elif event.button.id == "form-missed":
+            self.query_one("#form-status", Select).value = Status.MISSED.value
+            self.action_save()
         elif event.button.id in {"form-cancel", "form-close"}:
             self.action_cancel()
 
@@ -1062,8 +1092,19 @@ class HelpScreen(ModalScreen[None]):
         text.append("selecionar / confirmar\n")
         text.append("ESC  ", style="#ff38d1 bold")
         text.append("fechar modal\n\n")
+        text.append("STATUS DAS TAREFAS\n", style="#00e5ff bold")
+        for state, label in STATUS_LEGEND:
+            marker, color, _ = STATUS_MARKERS[state]
+            text.append(f"{marker}  ", style=color + " bold")
+            text.append(f"{label}\n", style="#d2def4")
+        text.append(
+            "O [!] aparece sozinho quando o último dia da tarefa passa e ela ainda "
+            "está pendente.\nDepois, use S para concluir ou K para registrar que não "
+            "foi concluída.\n\n",
+            style="#9bb2d6",
+        )
         text.append("ATALHOS\n", style="#00e5ff bold")
-        for key, label in (("D / W / M", "alternar modos Dia, Semana e Mês"), ("T", "ir para a data de hoje"), ("R", "abrir previsão do tempo"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C / S / U", "alternar, concluir ou desmarcar"), ("X / DELETE", "excluir com confirmação"), ("F / P", "filtrar categoria ou prioridade"), ("V", "ver tarefas / limpar filtros"), ("N / B", "próximo período / período anterior"), ("CTRL+G", "conectar ou sincronizar Google Agenda"), ("I", "sobre DukieList"), ("L", "limpar concluídas"), ("Q", "sair do DukieList")):
+        for key, label in (("D / W / M", "alternar modos Dia, Semana e Mês"), ("T", "ir para a data de hoje"), ("R", "abrir previsão do tempo"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C / S / U", "alternar, concluir ou desmarcar"), ("K", "marcar como não concluída"), ("X / DELETE", "excluir com confirmação"), ("F / P", "filtrar categoria ou prioridade"), ("V", "ver tarefas / limpar filtros"), ("N / B", "próximo período / período anterior"), ("CTRL+G", "conectar ou sincronizar Google Agenda"), ("I", "sobre DukieList"), ("L", "limpar concluídas"), ("Q", "sair do DukieList")):
             text.append(f"{key:<12}", style="#ff38d1 bold")
             text.append(f" {label}\n", style="#d2def4")
         yield VerticalScroll(Static("?  ATALHOS DO DUKIELIST", classes="modal-title"), Static(text, classes="help-copy"), Button(Text("[ Fechar ]"), id="help-close", classes="primary-action"), id="help-card")

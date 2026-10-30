@@ -40,10 +40,11 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 168 co
 - Escolher as datas em calendários completos e definir início e término em seletores de horário.
 - Editar qualquer tarefa selecionada e alterar todos os seus campos.
 - Concluir e reabrir tarefas.
+- Ver um **`[!]` amarelo** no lugar do `[ ]` quando o dia da tarefa passa e ela continua pendente, e registrar depois se ela foi concluída ou **não concluída**.
 - Excluir tarefas com confirmação.
 - Filtrar por texto, categoria, prioridade e status; usar `V` para limpar filtros e ver todas as tarefas.
 - Navegar para o dia, a semana ou o mês anterior e seguinte, pelas setas do teclado ou pelos atalhos `N` e `B`.
-- Consultar percentual de conclusão, total, pendentes e distribuição por categoria.
+- Consultar percentual de conclusão, total, pendentes, atrasadas, não concluídas e distribuição por categoria.
 - Usar o calendário mensal para selecionar um dia e ver as tarefas daquele dia.
 - Manter a semana inteira visível, com barra de rolagem nas colunas que excederem o espaço disponível.
 - Ajustar o calendário à altura do terminal para que todos os dias do mês vigente permaneçam na tela.
@@ -59,6 +60,34 @@ A composição segue as referências: marca em gradiente, abas, painéis com bor
 Para o layout completo, use cerca de **168×52** ou mais. Também há navegação testada em **140×44, 100×36 e 80×30**. Abaixo de 160 colunas, a previsão compacta é ocultada, mas continua acessível pelo atalho `R`. Em telas estreitas, a lateral é recolhida (a ajuda continua em `H`), a semana acompanha o dia selecionado mostrando três ou uma coluna, e formulários/calendário usam rolagem. Em telas baixas, o relógio é compacto e o progresso é ocultado para preservar as tarefas. Redimensionar não modifica seus dados.
 
 No modo Semana, a grade mostra a semana fechada, de segunda a domingo. `← →` escolhem o dia e, nas pontas, atravessam para a semana vizinha: avançar no domingo abre a semana seguinte já na segunda-feira, e voltar na segunda abre a semana anterior no domingo. O título do período, o progresso e a lateral acompanham a troca. `↑ ↓` percorrem todas as tarefas do dia selecionado — inclusive as que não cabem de uma vez. `A` cria no dia selecionado; `ENTER` edita a tarefa ou abre a criação se o dia estiver vazio. No calendário, `ENTER` abre a lista do dia selecionado.
+
+## Status das tarefas
+
+A coluna `STATUS` e os cartões da semana mostram, entre colchetes, em que pé está cada tarefa:
+
+| Marcador | Status | Quando aparece |
+| --- | --- | --- |
+| `[ ]` | Pendente | A tarefa ainda está dentro do prazo. |
+| `[✓]` | Concluída | Você marcou a tarefa como feita. |
+| `[!]` | Atrasada | **Automático**: o último dia da tarefa passou e ela continua pendente. |
+| `[✗]` | Não concluída | Você registrou que a tarefa não foi feita. |
+
+O `[!]` é calculado pela data, não guardado no banco: assim que o dia vira, toda tarefa pendente
+que ficou para trás passa a aparecer em amarelo, sem precisar reabrir o aplicativo. Ele é um
+lembrete de que falta uma decisão, e some quando você resolve a pendência de um dos dois jeitos:
+
+- `S` (ou **[ Marcar como concluída ]** no card de edição) para dizer que você conseguiu concluir.
+- `K` (ou **[ Marcar como não concluída ]** no card de edição) para registrar que não concluiu.
+
+O status **Não concluída** também está na lista do campo `Status:` do card de edição e no filtro de
+status (`F` abre o filtro). Tarefas não concluídas ficam no histórico: `L` (limpar concluídas)
+remove apenas as concluídas. Em tarefas de vários dias, o `[!]` só aparece depois que o **último**
+dia do intervalo passa. No calendário do modo Mês, onde não cabe um marcador por tarefa, os dias
+com tarefas atrasadas ou não concluídas ganham um `!` ao lado dos pontos de categoria.
+
+Para quem usa as integrações: Trello e Google Agenda só conhecem *feito* e *não feito*, então uma
+tarefa **Não concluída** chega lá como não feita. O DukieList guarda o status completo e não deixa
+uma leitura remota de "não feito" rebaixar a sua marcação de volta para *pendente*.
 
 ## Navegação pelo teclado
 
@@ -91,9 +120,10 @@ entre os controles, e `T` volta para hoje em qualquer modo.
 | `E` | Editar tarefa selecionada |
 | `C` | Concluir ou reabrir tarefa |
 | `S` / `U` | Marcar como concluída / desmarcar |
+| `K` | Marcar como não concluída |
 | `X` / `DELETE` | Excluir tarefa com confirmação |
 | `F` / `P` | Filtrar por categoria / prioridade |
-| `L` | Limpar tarefas concluídas do período |
+| `L` | Limpar tarefas concluídas do período (não remove as não concluídas) |
 | `V` | Ver tarefas; limpa filtros ativos |
 | `N` / `B` | Próximo período / período anterior, em todos os modos |
 | `CTRL+G` | Conectar ou sincronizar a Google Agenda |
@@ -396,9 +426,9 @@ dukielist/
 │   ├── __init__.py       # versão do pacote
 │   ├── __main__.py       # execução com python -m dukielist
 │   ├── app.py            # ciclo de vida do Textual
-│   ├── models.py         # Task, enums e parsing de data/hora
+│   ├── models.py         # Task, enums, atraso e parsing de data/hora
 │   ├── pickers.py        # calendário de seleção de data
-│   ├── services.py       # regras de negócio, filtros e progresso
+│   ├── services.py       # regras de negócio, filtros, progresso e resumo por status
 │   ├── screens.py        # tela inicial, workspace e modais
 │   ├── storage.py        # schema e CRUD SQLite
 │   ├── google_calendar.py # integração de mão dupla com a agenda do Google
@@ -409,7 +439,7 @@ dukielist/
 │   └── theme.tcss        # tema cyberpunk e layout responsivo
 ├── docs/screenshots/     # screenshots documentados acima
 ├── tests/
-│   ├── test_core.py      # CRUD, períodos e relógio digital
+│   ├── test_core.py      # CRUD, atraso, períodos e relógio digital
 │   ├── test_storage.py   # fechamento de conexões e rollback SQLite
 │   ├── test_google_calendar.py # conversão, envio e leitura da agenda
 │   ├── test_trello.py    # sincronização e mapeamento de cartões

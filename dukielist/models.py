@@ -23,6 +23,7 @@ class Category(str, Enum):
 class Status(str, Enum):
     PENDING = "pendente"
     COMPLETED = "concluída"
+    MISSED = "não concluída"
 
 
 class ViewMode(str, Enum):
@@ -52,10 +53,40 @@ class Task:
     def completed(self) -> bool:
         return self.status is Status.COMPLETED
 
-    def occurs_on(self, day: date) -> bool:
+    @property
+    def missed(self) -> bool:
+        """Pendência que o usuário declarou não ter concluído."""
+        return self.status is Status.MISSED
+
+    @property
+    def last_day(self) -> date:
+        """Último dia ocupado pela tarefa.
+
+        Eventos cujo término cai à meia-noite pertencem ao dia anterior: a
+        agenda do Google usa esse limite exclusivo para o fim de um intervalo.
+        """
         if not self.all_day and self.end_date > self.start_date and self.end_time == time.min:
-            return self.start_date <= day < self.end_date
-        return self.start_date <= day <= self.end_date
+            return self.end_date - timedelta(days=1)
+        return self.end_date
+
+    def is_overdue(self, today: date | None = None) -> bool:
+        """Tarefa ainda pendente depois de o seu último dia ter passado."""
+        if self.status is not Status.PENDING:
+            return False
+        return self.last_day < (today or date.today())
+
+    def display_state(self, today: date | None = None) -> str:
+        """Estado mostrado na interface: a conclusão ou a falta dela."""
+        if self.completed:
+            return "completed"
+        if self.missed:
+            return "missed"
+        if self.is_overdue(today):
+            return "overdue"
+        return "pending"
+
+    def occurs_on(self, day: date) -> bool:
+        return self.start_date <= day <= self.last_day
 
     @property
     def schedule_label(self) -> str:
@@ -72,10 +103,7 @@ class Task:
     def days_between(self, start: date, end: date) -> Iterator[date]:
         """Datas da tarefa no intervalo semiaberto [start, end)."""
         current = max(self.start_date, start)
-        task_end = self.end_date
-        if not self.all_day and task_end > self.start_date and self.end_time == time.min:
-            task_end -= timedelta(days=1)
-        last = min(task_end, end - timedelta(days=1))
+        last = min(self.last_day, end - timedelta(days=1))
         while current <= last:
             yield current
             current += timedelta(days=1)

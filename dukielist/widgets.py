@@ -15,7 +15,7 @@ from textual.message import Message
 from textual.widgets import DataTable, Static
 
 from .models import Category, Priority, Task, ViewMode
-from .services import Progress
+from .services import Progress, TaskService
 
 
 PRIORITY_COLORS = {
@@ -38,6 +38,24 @@ MODE_LABELS = {
     ViewMode.MONTH.value: "MÊS",
 }
 
+# Marcador, cor e estilo do título por estado exibido. "overdue" é derivado da
+# data: assim que o último dia da tarefa passa sem conclusão, o [ ] vira um [!]
+# amarelo até o usuário decidir se concluiu ou não.
+STATUS_MARKERS: dict[str, tuple[str, str, str]] = {
+    "completed": ("[✓]", "#39ff14", "#7b8dad strike"),
+    "overdue": ("[!]", "#ffc400", "#ffe9a8"),
+    "missed": ("[✗]", "#ff416c", "#ff9aae strike"),
+    "pending": ("[ ]", "#b7c9e9", "#e5edff"),
+}
+
+STATUS_LEGEND = (
+    ("completed", "Concluída"),
+    ("pending", "Pendente"),
+    ("overdue", "Atrasada (dia passou)"),
+    ("missed", "Não concluída"),
+)
+
+
 def gradient_text(value: str, start: str = "#00efff", end: str = "#ff38d1") -> Text:
     """Renderiza o branding com uma variação de cor por caractere."""
     text = Text(no_wrap=True)
@@ -54,7 +72,8 @@ def gradient_text(value: str, start: str = "#00efff", end: str = "#ff38d1") -> T
 
 
 def status_render(task: Task) -> Text:
-    return Text("[✓]" if task.completed else "[ ]", style="#39ff14" if task.completed else "#b7c9e9")
+    marker, color, _ = STATUS_MARKERS[task.display_state()]
+    return Text(marker, style=color)
 
 
 def progress_render(progress: Progress, width: int = 34) -> Text:
@@ -189,6 +208,7 @@ class SidebarPanel(Static):
             return [
                 ("←→", "Dia anterior / próximo"), ("↑↓", "Escolher tarefa"),
                 ("a", "Adicionar tarefa"), ("c", "Concluir tarefa"),
+                ("k", "Marcar não concluída"), ("u", "Reabrir tarefa"),
                 ("x", "Deletar tarefa"), ("e", "Editar tarefa"),
                 ("v", "Ver todas as tarefas"), ("f", "Filtrar por categoria"),
                 ("p", "Filtrar por prioridade"), ("l", "Limpar concluídas"),
@@ -200,13 +220,15 @@ class SidebarPanel(Static):
                 ("a", "Adicionar tarefa"), ("e", "Editar tarefa"),
                 ("x", "Deletar tarefa"), ("v", "Ver tarefa"),
                 ("s", "Marcar como concluída"), ("u", "Desmarcar tarefa"),
+                ("k", "Marcar não concluída"),
                 ("n", "Ir para próxima semana"), ("b", "Ir para semana anterior"),
                 ("h", "Mostrar ajuda"), ("q", "Sair"),
             ]
         return [
             ("←→", "Dia, trocando de mês"), ("↑↓", "Semana anterior / próxima"),
             ("a", "Adicionar tarefa (no dia)"), ("e", "Editar tarefa (do dia)"),
-            ("v", "Ver tarefas do dia"), ("b", "Mês anterior"),
+            ("k", "Marcar não concluída"), ("v", "Ver tarefas do dia"),
+            ("b", "Mês anterior"),
             ("n", "Próximo mês"), ("h", "Mostrar ajuda"), ("q", "Sair"),
         ]
 
@@ -214,14 +236,18 @@ class SidebarPanel(Static):
         text = Text()
         if self.mode == ViewMode.MONTH.value:
             self._line(text, "RESUMO DO MÊS")
-            total = len(self.tasks)
-            completed = sum(task.completed for task in self.tasks)
-            pending = total - completed
-            completed_percent = round(completed / total * 100) if total else 0
-            pending_percent = round(pending / total * 100) if total else 0
-            text.append(f"Total de tarefas  {total}\n", style="#d5e2fb")
-            text.append(f"Concluídas         {completed}  ({completed_percent}%)\n", style="#39ff14")
-            text.append(f"Pendentes          {pending}  ({pending_percent}%)\n", style="#ffe45e")
+            summary = TaskService.breakdown(self.tasks)
+            text.append(f"Total de tarefas  {summary.total}\n", style="#d5e2fb")
+            for state, label, amount in (
+                ("completed", "Concluídas", summary.completed),
+                ("pending", "Pendentes", summary.pending),
+                ("overdue", "Atrasadas", summary.overdue),
+                ("missed", "Não concluídas", summary.missed),
+            ):
+                text.append(
+                    f"{label:<17} {amount}  ({summary.percent(amount)}%)\n",
+                    style=STATUS_MARKERS[state][1],
+                )
             text.append("\nPor prioridade:\n", style="#a9bee4 bold")
             priorities = {priority.value: 0 for priority in Priority}
             for task in self.tasks:
@@ -251,6 +277,13 @@ class SidebarPanel(Static):
 
         if self.filters_active:
             text.append("\n● filtros ativos\n", style="#ff38d1 bold")
+
+        text.append("\n")
+        self._line(text, "STATUS")
+        for state, label in STATUS_LEGEND:
+            marker, color, _ = STATUS_MARKERS[state]
+            text.append(f"{marker} ", style=color + " bold")
+            text.append(f"{label}\n", style="#d4e1f8")
 
         if self.mode != ViewMode.MONTH.value:
             text.append("\n")
@@ -313,18 +346,32 @@ class CalendarGrid(Static):
                 tasks = self.tasks_by_day.get(current, [])
                 day_style = "#e8efff bold" if in_month else "#3e557a"
                 cell = Text(f"{current.day:02d}", style=day_style)
+                # O calendário não tem espaço para o [ ] de cada tarefa, então o
+                # atraso do dia aparece como um ! ao lado dos pontos.
+                alert = next(
+                    (
+                        STATUS_MARKERS[state][1]
+                        for state in ("overdue", "missed")
+                        if any(task.display_state() == state for task in tasks)
+                    ),
+                    None,
+                )
                 if row_height == 1:
                     cell.append(" ")
                     if current == self.selected_date:
                         cell.append("▸", style="#00e5ff bold")
                     for task in tasks[:3]:
                         cell.append("●", style=CATEGORY_COLORS[task.category.value])
+                    if alert:
+                        cell.append("!", style=alert + " bold")
                 else:
                     cell.append("\n")
                     if current == self.selected_date:
                         cell.append("▸ ", style="#00e5ff bold")
                     for task in tasks[:3]:
                         cell.append("●", style=CATEGORY_COLORS[task.category.value])
+                    if alert:
+                        cell.append(" !", style=alert + " bold")
                     cell.append("\n" * (row_height - 2))
                 if current == self.selected_date:
                     cell_width = max(4, (self.size.width - 8) // 7 - 2)
@@ -407,14 +454,13 @@ class WeekBoard(Static):
 
     def _task_line(self, cell: Text, task: Task, selected: bool) -> None:
         start = len(cell)
-        marker = "[✓]" if task.completed else "[ ]"
-        title_style = "#7b8dad strike" if task.completed else "#e5edff"
+        marker, marker_color, title_style = STATUS_MARKERS[task.display_state()]
         from textwrap import wrap
 
         column_width = max(10, (self.size.width // (7 if self.size.width >= 112 else 3 if self.size.width >= 65 else 1)) - 5)
         title = "\n".join(wrap(f"{marker} {task.title}", column_width)[:2])
         cell.append(title + "\n", style=title_style)
-        cell.stylize("#39ff14" if task.completed else "#dbe8ff", start, start + 3)
+        cell.stylize(f"{marker_color} bold", start, start + len(marker))
         cell.append(task.schedule_label + "\n", style="#00e5ff")
         cell.append(f"{task.priority.value.capitalize()}", style=PRIORITY_COLORS[task.priority.value])
         cell.append(" | ", style="#7390b9")
@@ -520,7 +566,7 @@ class TaskTable(DataTable):
         for index, task in enumerate(tasks, start=1):
             title = Text()
             title.append(f"{task.schedule_label}  ", style="#00e5ff")
-            title.append(task.title, style="#7b8dad strike" if task.completed else "#e5edff")
+            title.append(task.title, style=STATUS_MARKERS[task.display_state()][2])
             self.add_row(
                 Text(str(index), style="#7390b9"),
                 status_render(task),

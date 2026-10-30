@@ -11,7 +11,7 @@ import tempfile
 from unittest.mock import patch
 
 from dukielist.app import DukieListApp
-from dukielist.models import Category, Priority, ViewMode
+from dukielist.models import Category, Priority, Status, ViewMode
 from dukielist.screens import MainScreen, TaskFormScreen
 from dukielist.weather import ForecastDay, WeatherForecast
 from textual.widgets import Checkbox, Input
@@ -22,7 +22,9 @@ async def capture(output: Path, png: bool, mock_fetch) -> None:
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as temporary:
         app = DukieListApp(db_path=Path(temporary) / "demo.db")
-        anchor = date(2026, 9, 10)
+        # Ancorar em hoje mantém a demonstração coerente com o marcador de
+        # atraso, que depende da data: num passado fixo tudo apareceria como [!].
+        anchor = date.today()
         mock_fetch.return_value = WeatherForecast(
             "Maringá, Paraná",
             tuple(
@@ -47,6 +49,10 @@ async def capture(output: Path, png: bool, mock_fetch) -> None:
                 )
                 if (offset + index) % 4 == 0:
                     app.service.toggle(task.id)
+                elif offset < 0 and (offset + index) % 3 == 0:
+                    # Dias que já passaram trazem os dois desfechos possíveis:
+                    # o [✗] registrado pelo usuário e o [!] ainda sem decisão.
+                    app.service.set_status(task.id, Status.MISSED)
         async with app.run_test(size=(168, 52)) as pilot:
             async def snap(name: str) -> None:
                 await pilot.pause()

@@ -79,6 +79,7 @@ Button:hover, Button:focus {
 .primary-action { color: $cyan; border: round $cyan; background: #09283e; }
 .secondary-action { color: #b7c9e9; border: round #466da0; }
 .complete-action { color: #39ff14; border: round #39ff14; }
+.missed-action { color: #ffc400; border: round #ffc400; }
 .danger-action { color: #ff416c; border: round #ff416c; }
 #views { width: 100%; height: 1fr; overflow: auto auto; }
 .view-panel { display: none; width: 100%; height: 100%; }

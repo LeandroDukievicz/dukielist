@@ -169,6 +169,40 @@ class ConnectionTest(unittest.TestCase):
             ))
             self.assertFalse(storage.get(task.id).completed)
 
+    def test_remote_incomplete_status_keeps_a_missed_marking(self):
+        with tempfile.TemporaryDirectory() as directory:
+            storage = SQLiteStorage(Path(directory) / "tasks.db")
+            task = self._linked_task(storage)
+
+            local = storage.get(task.id)
+            local.status = Status.MISSED
+            storage.update(local)
+            storage.mark_external_completion_synced(
+                source="trello",
+                external_id="card-1",
+                completed=False,
+                external_updated_at="v2",
+            )
+
+            # O Trello só sabe feito/não feito: uma leitura de "não feito" não
+            # pode rebaixar "não concluída" de volta para "pendente".
+            self.assertFalse(storage.apply_external_completion(
+                source="trello",
+                external_id="card-1",
+                completed=False,
+                external_updated_at="v3",
+            ))
+            self.assertIs(storage.get(task.id).status, Status.MISSED)
+
+            # Uma conclusão remota continua chegando normalmente.
+            self.assertTrue(storage.apply_external_completion(
+                source="trello",
+                external_id="card-1",
+                completed=True,
+                external_updated_at="v4",
+            ))
+            self.assertIs(storage.get(task.id).status, Status.COMPLETED)
+
     def test_existing_database_is_migrated_for_completion_outbox(self):
         with tempfile.TemporaryDirectory() as directory:
             db_path = Path(directory) / "old.db"

@@ -29,6 +29,20 @@ class Progress:
         return round(self.completed / self.total * 100) if self.total else 0
 
 
+@dataclass(frozen=True, slots=True)
+class StatusBreakdown:
+    """Contagem por estado exibido, separando atraso de pendência em dia."""
+
+    total: int
+    completed: int
+    pending: int
+    overdue: int
+    missed: int
+
+    def percent(self, amount: int) -> int:
+        return round(amount / self.total * 100) if self.total else 0
+
+
 class TaskService:
     def __init__(self, storage: SQLiteStorage) -> None:
         self.storage = storage
@@ -107,10 +121,20 @@ class TaskService:
             raise ValueError("O término deve acontecer depois do início.")
 
     def toggle(self, task_id: int) -> Task:
+        task = self._require(task_id)
+        return self._save_status(task, Status.PENDING if task.completed else Status.COMPLETED)
+
+    def set_status(self, task_id: int, status: Status) -> Task:
+        return self._save_status(self._require(task_id), status)
+
+    def _require(self, task_id: int) -> Task:
         task = self.storage.get(task_id)
         if not task:
             raise ValueError("Tarefa não encontrada.")
-        task.status = Status.PENDING if task.completed else Status.COMPLETED
+        return task
+
+    def _save_status(self, task: Task, status: Status) -> Task:
+        task.status = status
         task.updated_at = datetime.now()
         return self.storage.update(task)
 
@@ -120,6 +144,13 @@ class TaskService:
     @staticmethod
     def progress(tasks: list[Task]) -> Progress:
         return Progress(total=len(tasks), completed=sum(task.completed for task in tasks))
+
+    @staticmethod
+    def breakdown(tasks: list[Task], today: date | None = None) -> StatusBreakdown:
+        counts = {"completed": 0, "pending": 0, "overdue": 0, "missed": 0}
+        for task in tasks:
+            counts[task.display_state(today)] += 1
+        return StatusBreakdown(total=len(tasks), **counts)
 
 
 def week_bounds(anchor: date) -> tuple[date, date]:

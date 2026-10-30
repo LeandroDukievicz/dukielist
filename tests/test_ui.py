@@ -9,10 +9,10 @@ from unittest.mock import patch
 from rich.console import Console
 from textual.widgets import Button, Checkbox, Input, Select
 from dukielist.app import DukieListApp
-from dukielist.models import Category, Priority, ViewMode
+from dukielist.models import Category, Priority, Status, ViewMode
 from dukielist.pickers import DatePickerScreen, shift_selected_month
 from dukielist.screens import AboutScreen, MainScreen, TaskFormScreen, FilterScreen, HelpScreen, ConfirmDeleteScreen
-from dukielist.widgets import CalendarGrid, WeekBoard
+from dukielist.widgets import CalendarGrid, WeekBoard, status_render
 from dukielist.weather import ForecastDay, WeatherForecast, WeatherError, WeatherConnectionError
 from dukielist.weather_screens import WeatherScreen
 
@@ -82,6 +82,67 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsInstance(self.app.screen, TaskFormScreen)
             await pilot.press("escape")
             self.assertIsInstance(self.app.screen, MainScreen)
+
+    async def test_overdue_task_is_flagged_and_resolved_from_the_keyboard(self):
+        yesterday = date.today() - timedelta(days=1)
+        late = self.app.service.create(
+            title="Tarefa atrasada", description="", start_date=yesterday,
+            end_date=yesterday, start_time=None, end_time=None, all_day=True,
+            priority=Priority.HIGH, category=Category.WORK)
+
+        async with self.app.run_test(size=(168, 52)) as pilot:
+            await pilot.press("enter")
+            main = self.app.screen
+            main.anchor_date = yesterday
+            main.selected_task_id = late.id
+            main._refresh_all()
+            main._focus_active_view()
+            await pilot.pause()
+
+            self.assertEqual(main._current_task().id, late.id)
+            self.assertEqual(status_render(main._current_task()).plain, "[!]")
+
+            await pilot.press("k")
+            self.assertIs(self.app.service.get(late.id).status, Status.MISSED)
+            self.assertEqual(status_render(self.app.service.get(late.id)).plain, "[✗]")
+
+            # "Limpar concluídas" não remove o que ficou registrado como não concluído.
+            await pilot.press("l")
+            self.assertIsNotNone(self.app.service.get(late.id))
+
+            await pilot.press("u")
+            self.assertIs(self.app.service.get(late.id).status, Status.PENDING)
+            await pilot.press("s")
+            self.assertIs(self.app.service.get(late.id).status, Status.COMPLETED)
+
+    async def test_task_form_offers_the_missed_status(self):
+        yesterday = date.today() - timedelta(days=1)
+        late = self.app.service.create(
+            title="Tarefa atrasada", description="", start_date=yesterday,
+            end_date=yesterday, start_time=None, end_time=None, all_day=True,
+            priority=Priority.LOW, category=Category.PERSONAL)
+
+        async with self.app.run_test(size=(168, 52)) as pilot:
+            await pilot.press("enter")
+            main = self.app.screen
+            main.anchor_date = yesterday
+            main.selected_task_id = late.id
+            main._refresh_all()
+            main._focus_active_view()
+            await pilot.pause()
+
+            await pilot.press("e")
+            form = self.app.screen
+            self.assertIsInstance(form, TaskFormScreen)
+            # A opção existe de fato: um valor fora da lista seria recusado.
+            status = form.query_one("#form-status", Select)
+            status.value = Status.MISSED.value
+            self.assertEqual(status.value, Status.MISSED.value)
+
+            await pilot.click("#form-missed")
+            await pilot.pause()
+            self.assertIsInstance(self.app.screen, MainScreen)
+            self.assertIs(self.app.service.get(late.id).status, Status.MISSED)
 
     async def test_google_connection_from_shortcut_and_button(self):
         with patch("dukielist.app.authorize_google", return_value="Agenda de teste") as authorize:
