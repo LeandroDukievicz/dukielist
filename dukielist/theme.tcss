@@ -71,6 +71,7 @@ Button:hover, Button:focus {
 #period-navigation { width: 1fr; min-width: 0; height: 3; align: left middle; }
 #period-actions { width: auto; height: 3; align: left middle; }
 #google-connect { min-width: 18; color: $cyan; }
+#notes-button { min-width: 10; color: $cyan; }
 .period-arrow { width: 4; min-width: 4; height: 3; padding: 0; border: none; color: $cyan; background: transparent; }
 .period-title {
     width: 1fr; min-width: 0; height: 3; overflow: hidden;
@@ -148,6 +149,7 @@ DataTable > .datatable--cursor { color: #ffffff; background: #064977; }
 .welcome-prompt { height: 2; color: #a9bee4; text-style: bold; content-align: center middle; }
 #mode-chooser { width: 100%; height: 8; align: center middle; }
 #welcome-google-connect { width: 28; margin: 0 0 1 0; color: $cyan; }
+#welcome-notes { width: 28; margin: 0 0 1 0; color: $cyan; }
 .mode-card {
     width: 1fr; height: 6; margin: 0 1; padding: 1;
     border: round $line; color: #a9bee4; content-align: center middle; text-align: center;
@@ -262,3 +264,31 @@ Input:focus, TextArea:focus, Select:focus { border: round $cyan; background: #0c
 #weather-location { height: auto; color: $cyan; text-style: bold; margin: 1 0; }
 #weather-results { height: auto; min-height: 1; }
 #weather-source { height: auto; color: $muted; margin-top: 1; }
+
+/* Bloco de notas: criação, edição e persistência local de anotações */
+#notes-card {
+    width: 96; max-width: 98%; height: 30; max-height: 96%;
+    padding: 1 2; border: round $cyan; border-right: round $magenta;
+    background: $surface;
+}
+#notes-body { width: 100%; height: 1fr; }
+#notes-sidebar { width: 32; min-width: 24; height: 100%; margin-right: 1; }
+#notes-sidebar #note-new { width: 100%; margin-bottom: 1; }
+#notes-sidebar OptionList {
+    width: 100%; height: 1fr; border: round #466da0; background: #050d1d; color: $text;
+}
+#notes-sidebar OptionList:focus {
+    border: round $cyan; background: #091d32;
+}
+#notes-sidebar OptionList > .option-list--option-highlighted {
+    background: #064977; color: #ffffff;
+}
+#notes-editor { width: 1fr; height: 100%; }
+#notes-editor #note-status-info { height: 1; color: $muted; margin-bottom: 0; }
+#notes-editor .form-row { height: 3; }
+#notes-editor .form-label { width: 8; }
+#notes-editor #note-content { height: 1fr; min-height: 8; margin: 1 0; }
+#notes-editor .form-actions { height: 3; }
+.narrow-layout #notes-card { width: 98%; height: 96%; padding: 0 1; }
+.narrow-layout #notes-body { layout: vertical; }
+.narrow-layout #notes-sidebar { width: 100%; height: 9; margin-right: 0; margin-bottom: 1; }

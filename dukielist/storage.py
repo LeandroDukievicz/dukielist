@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
-from .models import Category, Priority, Status, Task
+from .models import Category, Note, Priority, Status, Task
 
 
 MIRROR_SETTING_KEY = "mirror_sources"
@@ -91,6 +91,14 @@ class SQLiteStorage:
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_external_outbox_entry
                     ON external_outbox(source, operation, task_id);
+                CREATE TABLE IF NOT EXISTS notes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at);
                 """
             )
             columns = {row["name"] for row in connection.execute("PRAGMA table_info(tasks)")}
@@ -754,3 +762,76 @@ class SQLiteStorage:
             )
             self._enqueue_upsert(connection, task.id, skip=source)
             return "updated"
+
+    def _row_to_note(self, row: sqlite3.Row) -> Note:
+        return Note(
+            id=row["id"],
+            title=row["title"],
+            content=row["content"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+
+    def create_note(self, note: Note) -> Note:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO notes (title, content, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    note.title,
+                    note.content,
+                    note.created_at.isoformat(),
+                    note.updated_at.isoformat(),
+                ),
+            )
+            return Note(
+                id=cursor.lastrowid,
+                title=note.title,
+                content=note.content,
+                created_at=note.created_at,
+                updated_at=note.updated_at,
+            )
+
+    def update_note(self, note: Note) -> Note:
+        if note.id is None:
+            raise ValueError("ID da nota é obrigatório para atualização.")
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE notes
+                SET title = ?, content = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    note.title,
+                    note.content,
+                    note.updated_at.isoformat(),
+                    note.id,
+                ),
+            )
+            return note
+
+    def get_note(self, note_id: int) -> Note | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM notes WHERE id = ?",
+                (note_id,),
+            ).fetchone()
+            return self._row_to_note(row) if row else None
+
+    def list_notes(self) -> list[Note]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM notes ORDER BY updated_at DESC, id DESC"
+            ).fetchall()
+            return [self._row_to_note(row) for row in rows]
+
+    def delete_note(self, note_id: int) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM notes WHERE id = ?",
+                (note_id,),
+            )
+            return cursor.rowcount > 0

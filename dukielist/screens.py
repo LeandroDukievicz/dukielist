@@ -14,15 +14,17 @@ from textual.widgets import (
     Checkbox,
     DataTable,
     Input,
+    OptionList,
     RadioButton,
     RadioSet,
     Select,
     Static,
     TextArea,
 )
+from textual.widgets.option_list import Option
 
 from . import __version__
-from .models import Category, Priority, Status, Task, ViewMode, format_date
+from .models import Category, Note, Priority, Status, Task, ViewMode, format_date
 from .pickers import DatePickerScreen
 from .services import TaskFilters, TaskService, month_bounds, shift_month, week_bounds
 from .weather import WeatherError, WeatherForecast, fetch_forecast, fetch_local_forecast
@@ -56,6 +58,7 @@ class WelcomeScreen(Screen[None]):
     BINDINGS = [
         ("enter", "select", "Abrir"),
         ("ctrl+g", "connect_google", "Google Agenda"),
+        ("o", "open_notes", "Notas"),
         ("i", "show_about", "Sobre"),
         ("q", "quit", "Sair"),
     ]
@@ -81,6 +84,7 @@ class WelcomeScreen(Screen[None]):
                             id="mode-chooser",
                         ),
                         Button("Conectar Google Agenda", id="welcome-google-connect", classes="secondary-action"),
+                        Button("Notas", id="welcome-notes", classes="secondary-action"),
                         Static("← → ↑ ↓ selecionar   •   ENTER abrir   •   CTRL+G Google   •   I sobre", classes="welcome-help"),
                         Static(f"SQLite local  /  teclado first  /  v{__version__}", classes="welcome-meta"),
                         id="welcome-content",
@@ -140,9 +144,14 @@ class WelcomeScreen(Screen[None]):
     def action_connect_google(self) -> None:
         self.app.request_google_auth()
 
+    def action_open_notes(self) -> None:
+        self.app.push_screen(NotesScreen(self.app.service))
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "welcome-google-connect":
             self.action_connect_google()
+        elif event.button.id == "welcome-notes":
+            self.action_open_notes()
 
     def on_mode_card_selected(self, event: ModeCard.Selected) -> None:
         self.selected = self.modes.index(ViewMode(event.mode))
@@ -215,6 +224,7 @@ class MainScreen(Screen[None]):
         ("h", "show_help", "Ajuda"),
         ("?", "show_help", "Ajuda"),
         ("ctrl+g", "connect_google", "Google Agenda"),
+        ("o", "open_notes", "Notas"),
         ("i", "show_about", "Sobre"),
         ("q", "quit", "Sair"),
         ("tab", "app.focus_next", "Próximo campo"),
@@ -273,6 +283,7 @@ class MainScreen(Screen[None]):
                             Button("＋ ADICIONAR", id="add-task", classes="primary-action"),
                             Button("✎ EDITAR", id="edit-task", classes="secondary-action"),
                             Button("GOOGLE AGENDA", id="google-connect", classes="secondary-action"),
+                            Button("NOTAS", id="notes-button", classes="secondary-action"),
                             id="period-actions",
                         ),
                         id="period-bar",
@@ -330,6 +341,9 @@ class MainScreen(Screen[None]):
 
     def action_connect_google(self) -> None:
         self.app.request_google_auth()
+
+    def action_open_notes(self) -> None:
+        self.app.push_screen(NotesScreen(self.service))
 
     def _refresh_local_weather(self) -> None:
         if not self._weather_manual_override:
@@ -720,6 +734,8 @@ class MainScreen(Screen[None]):
             self.action_edit_task()
         elif button_id == "google-connect":
             self.action_connect_google()
+        elif button_id == "notes-button":
+            self.action_open_notes()
         elif button_id == "weather-prev":
             self.action_previous_weather()
         elif button_id == "weather-next":
@@ -1147,6 +1163,172 @@ class FilterScreen(ModalScreen[TaskFilters | None]):
         self.action_apply() if event.button.id == "filter-apply" else self.action_cancel()
 
 
+class NotesScreen(ModalScreen[None]):
+    BINDINGS = [
+        ("escape", "close", "Fechar"),
+        ("ctrl+s", "save_note", "Salvar"),
+        ("ctrl+n", "new_note", "Nova nota"),
+    ]
+
+    def __init__(self, service: TaskService) -> None:
+        super().__init__()
+        self.service = service
+        self.current_note_id: int | None = None
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Horizontal(
+                Static("📝", classes="modal-symbol"),
+                Static(gradient_text("BLOCO DE NOTAS"), classes="modal-title"),
+                Static("Anotações e textos", classes="modal-tagline"),
+                Button("×", id="notes-close", classes="close-button"),
+                classes="modal-heading",
+            ),
+            Horizontal(
+                Vertical(
+                    Button("＋ NOVA NOTA", id="note-new", classes="primary-action"),
+                    Static("Anotações salvas:", classes="field-label"),
+                    OptionList(id="notes-list"),
+                    id="notes-sidebar",
+                ),
+                Vertical(
+                    Static("Nova anotação (não salva)", id="note-status-info"),
+                    Horizontal(
+                        Static("Título:", classes="form-label"),
+                        Input(placeholder="Título da anotação...", id="note-title"),
+                        classes="form-row",
+                    ),
+                    TextArea(placeholder="Digite suas anotações aqui...", id="note-content"),
+                    Horizontal(
+                        Button(Text("[ Salvar ]"), id="note-save", classes="primary-action"),
+                        Button(Text("[ Excluir ]"), id="note-delete", classes="danger-action"),
+                        Button(Text("[ Fechar ]"), id="notes-cancel", classes="secondary-action"),
+                        classes="form-actions",
+                    ),
+                    id="notes-editor",
+                ),
+                id="notes-body",
+            ),
+            Static(
+                "CTRL+S salvar  •  CTRL+N nova anotação  •  ESC fechar",
+                classes="modal-footer-help",
+            ),
+            id="notes-card",
+        )
+
+    def on_mount(self) -> None:
+        self._update_responsive_class()
+        self._refresh_notes_list()
+        notes = self.service.list_notes()
+        if notes:
+            self._load_note(notes[0].id)
+        else:
+            self.action_new_note()
+
+    def on_resize(self, event: Resize) -> None:
+        self._update_responsive_class()
+
+    def _update_responsive_class(self) -> None:
+        width = self.app.size.width if self.app else 160
+        self.set_class(width < 100, "narrow-layout")
+
+    def _refresh_notes_list(self) -> None:
+        notes = self.service.list_notes()
+        ol = self.query_one("#notes-list", OptionList)
+        ol.clear_options()
+        if not notes:
+            ol.add_option(Option("  (Nenhuma nota salva)", id="_empty", disabled=True))
+        else:
+            highlight_index = None
+            for idx, note in enumerate(notes):
+                title_display = note.title if len(note.title) <= 24 else note.title[:22] + "…"
+                date_str = note.updated_at.strftime("%d/%m %H:%M")
+                ol.add_option(Option(Text.from_markup(f"[bold]{title_display}[/bold]\n[dim]{date_str}[/dim]"), id=str(note.id)))
+                if self.current_note_id == note.id:
+                    highlight_index = idx
+            if highlight_index is not None:
+                ol.highlighted = highlight_index
+
+    def _load_note(self, note_id: int | None) -> None:
+        if note_id is None:
+            return
+        note = self.service.get_note(note_id)
+        if not note:
+            return
+        self.current_note_id = note.id
+        self.query_one("#note-title", Input).value = note.title
+        self.query_one("#note-content", TextArea).text = note.content
+        date_str = note.updated_at.strftime("%d/%m/%Y às %H:%M")
+        self.query_one("#note-status-info", Static).update(f"Editando nota #{note.id} — salva em {date_str}")
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if not event.option_id or event.option_id.startswith("_"):
+            return
+        try:
+            self._load_note(int(event.option_id))
+        except (ValueError, TypeError):
+            pass
+
+    def action_new_note(self) -> None:
+        self.current_note_id = None
+        self.query_one("#note-title", Input).value = ""
+        self.query_one("#note-content", TextArea).text = ""
+        self.query_one("#note-status-info", Static).update("Nova anotação (não salva)")
+        self.query_one("#note-title", Input).focus()
+
+    def action_save_note(self) -> None:
+        raw_title = self.query_one("#note-title", Input).value.strip()
+        content = self.query_one("#note-content", TextArea).text
+        if not raw_title and not content.strip():
+            self.notify("Digite um título ou texto para salvar.", title="Notas", severity="warning")
+            return
+
+        if not raw_title:
+            first_line = next((line.strip() for line in content.splitlines() if line.strip()), "Sem título")
+            raw_title = first_line[:40]
+
+        if self.current_note_id is None:
+            note = self.service.create_note(title=raw_title, content=content)
+            self.current_note_id = note.id
+            self.notify("Nota criada com sucesso!", title="Notas")
+        else:
+            note = self.service.update_note(self.current_note_id, title=raw_title, content=content)
+            self.notify("Nota salva com sucesso!", title="Notas")
+
+        self.query_one("#note-title", Input).value = note.title
+        date_str = note.updated_at.strftime("%d/%m/%Y às %H:%M")
+        self.query_one("#note-status-info", Static).update(f"Editando nota #{note.id} — salva em {date_str}")
+        self._refresh_notes_list()
+
+    def action_delete_note(self) -> None:
+        if self.current_note_id is None:
+            self.action_new_note()
+            return
+        self.service.delete_note(self.current_note_id)
+        self.notify("Nota excluída.", title="Notas")
+        self.current_note_id = None
+        notes = self.service.list_notes()
+        self._refresh_notes_list()
+        if notes:
+            self._load_note(notes[0].id)
+        else:
+            self.action_new_note()
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id
+        if button_id in {"notes-close", "notes-cancel"}:
+            self.action_close()
+        elif button_id == "note-new":
+            self.action_new_note()
+        elif button_id == "note-save":
+            self.action_save_note()
+        elif button_id == "note-delete":
+            self.action_delete_note()
+
+
 class HelpScreen(ModalScreen[None]):
     BINDINGS = [("escape", "close", "Fechar"), ("h", "close", "Fechar")]
 
@@ -1186,7 +1368,7 @@ class HelpScreen(ModalScreen[None]):
             style="#9bb2d6",
         )
         text.append("ATALHOS\n", style="#00e5ff bold")
-        for key, label in (("D / W / M", "alternar modos Dia, Semana e Mês"), ("T", "ir para a data de hoje"), ("R", "abrir previsão do tempo"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C / S / U", "alternar, concluir ou reabrir o dia sob o cursor"), ("K", "o dia sob o cursor não foi concluído"), ("SHIFT+C / U / K", "o mesmo, mas na tarefa inteira"), ("X / DELETE", "excluir com confirmação"), ("F / P", "filtrar categoria ou prioridade"), ("V", "ver tarefas / limpar filtros"), ("N / B", "próximo período / período anterior"), ("CTRL+G", "conectar ou sincronizar Google Agenda"), ("I", "sobre DukieList"), ("L", "limpar concluídas"), ("Q", "sair do DukieList")):
+        for key, label in (("D / W / M", "alternar modos Dia, Semana e Mês"), ("T", "ir para a data de hoje"), ("R", "abrir previsão do tempo"), ("O", "abrir bloco de notas"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C / S / U", "alternar, concluir ou reabrir o dia sob o cursor"), ("K", "o dia sob o cursor não foi concluído"), ("SHIFT+C / U / K", "o mesmo, mas na tarefa inteira"), ("X / DELETE", "excluir com confirmação"), ("F / P", "filtrar categoria ou prioridade"), ("V", "ver tarefas / limpar filtros"), ("N / B", "próximo período / período anterior"), ("CTRL+G", "conectar ou sincronizar Google Agenda"), ("I", "sobre DukieList"), ("L", "limpar concluídas"), ("Q", "sair do DukieList")):
             text.append(f"{key:<12}", style="#ff38d1 bold")
             text.append(f" {label}\n", style="#d2def4")
         yield VerticalScroll(Static("?  ATALHOS DO DUKIELIST", classes="modal-title"), Static(text, classes="help-copy"), Button(Text("[ Fechar ]"), id="help-close", classes="primary-action"), id="help-card")

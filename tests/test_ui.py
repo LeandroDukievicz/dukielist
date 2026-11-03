@@ -7,11 +7,19 @@ from pathlib import Path
 from unittest.mock import patch
 
 from rich.console import Console
-from textual.widgets import Button, Checkbox, Input, Select
+from textual.widgets import Button, Checkbox, Input, OptionList, Select, TextArea
 from dukielist.app import DukieListApp
 from dukielist.models import Category, Priority, Status, ViewMode
 from dukielist.pickers import DatePickerScreen, shift_selected_month
-from dukielist.screens import AboutScreen, MainScreen, TaskFormScreen, FilterScreen, HelpScreen, ConfirmDeleteScreen
+from dukielist.screens import (
+    AboutScreen,
+    ConfirmDeleteScreen,
+    FilterScreen,
+    HelpScreen,
+    MainScreen,
+    NotesScreen,
+    TaskFormScreen,
+)
 from dukielist.widgets import CalendarGrid, WeekBoard, status_render
 from dukielist.weather import ForecastDay, WeatherForecast, WeatherError, WeatherConnectionError
 from dukielist.weather_screens import WeatherScreen
@@ -270,6 +278,52 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
             with patch.object(self.app, "request_google_auth") as connect:
                 await pilot.click("#welcome-google-connect")
                 connect.assert_called_once()
+
+    async def test_notes_button_saves_and_reopens_the_saved_note(self):
+        async with self.app.run_test(size=(168, 52)) as pilot:
+            await pilot.click("#welcome-notes")
+            await pilot.pause()
+            self.assertIsInstance(self.app.screen, NotesScreen)
+            self.app.screen.query_one("#note-title", Input).value = "Compras"
+            self.app.screen.query_one("#note-content", TextArea).text = "Café e chá"
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+            saved = self.app.service.list_notes()
+            self.assertEqual([(note.title, note.content) for note in saved],
+                             [("Compras", "Café e chá")])
+            await pilot.press("escape")
+            await pilot.pause()
+
+            self.app.screen.action_select()
+            await pilot.pause()
+            await pilot.click("#notes-button")
+            await pilot.pause()
+            notes = self.app.screen
+            self.assertIsInstance(notes, NotesScreen)
+            self.assertEqual(notes.current_note_id, saved[0].id)
+            self.assertEqual(notes.query_one("#note-content", TextArea).text, "Café e chá")
+            self.assertEqual(notes.query_one("#notes-list", OptionList).option_count, 1)
+
+            notes.action_new_note()
+            await pilot.pause()
+            self.assertIsNone(notes.current_note_id)
+            notes.query_one("#note-content", TextArea).text = "Levar o cabo HDMI"
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+            self.assertEqual([note.title for note in self.app.service.list_notes()],
+                             ["Levar o cabo HDMI", "Compras"])
+
+            notes.action_delete_note()
+            await pilot.pause()
+            self.assertEqual([note.title for note in self.app.service.list_notes()], ["Compras"])
+
+            for size in ((168, 52), (100, 36), (80, 30)):
+                with self.subTest(size=size):
+                    await pilot.resize_terminal(*size)
+                    await pilot.pause()
+                    self.assertTrue(notes.region.contains_region(
+                        notes.query_one("#notes-card").region
+                    ), size)
 
     async def test_navigation_at_supported_sizes(self):
         async with self.app.run_test(size=(168, 52)) as pilot:

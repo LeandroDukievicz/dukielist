@@ -53,6 +53,7 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 168 co
 - Sincronizar cartões do Trello com prazo, sem duplicar tarefas em execuções futuras.
 - Espelhar as tarefas no Google Calendar e ver no DukieList os compromissos da agenda, nos dois sentidos.
 - Ver a previsão do tempo da localização aproximada atual no cabeçalho, com setas para hoje e mais três dias, incluindo chuva estimada em mm.
+- Escrever anotações livres no **bloco de notas**, pelo botão **Notas** na abertura, pelo botão **NOTAS** na tela principal ou pelo atalho `O`: as notas ficam no mesmo SQLite e continuam disponíveis na próxima abertura.
 
 A faixa principal mantém a marca **DukieList**. As abas de visualização dividem o cabeçalho com a previsão do tempo e um relógio **digital HH:MM:SS**, atualizado a cada segundo, com o dia da semana e a data. O relógio usa o horário local da máquina. Pressione **`I`** para abrir **Sobre**.
 
@@ -136,6 +137,7 @@ entre os controles, e `T` volta para hoje em qualquer modo.
 | `M` | Modo Mês |
 | `T` | Ir para a data de hoje em qualquer modo |
 | `R` | Abrir a previsão do tempo |
+| `O` | Abrir o bloco de notas |
 | `A` | Adicionar tarefa |
 | `E` | Editar tarefa selecionada |
 | `C` | Concluir ou reabrir o dia sob o cursor |
@@ -264,6 +266,18 @@ A detecção por IP usa [GeoJS](https://www.geojs.io/docs/v1/endpoints/geo/) e a
 [Open-Meteo](https://open-meteo.com/en/docs). A API pública gratuita da Open-Meteo é destinada
 ao uso **não comercial** e não exige chave. Para distribuir o DukieList como produto comercial,
 é necessário contratar uma licença/API apropriada antes de usar esta integração.
+
+## Bloco de notas
+
+O botão **Notas**, na abertura logo depois de **Conectar Google Agenda**, e o botão **NOTAS**,
+na tela principal logo depois de **GOOGLE AGENDA**, abrem o bloco de notas; o atalho `O`
+funciona nas duas telas. A lateral lista as anotações salvas, da mais recente para a mais
+antiga, com data e hora da última gravação; selecionar uma abre o texto no editor ao lado.
+
+`CTRL+N` começa uma anotação nova, `CTRL+S` salva a que está aberta e `ESC` fecha a tela. Ao
+salvar sem título, a primeira linha do texto (até 40 caracteres) passa a ser o título. **Excluir**
+remove a anotação aberta e carrega a seguinte. As notas ficam no mesmo banco SQLite das tarefas,
+então continuam disponíveis na próxima abertura e entram no backup do arquivo.
 
 ## Sincronização com o Trello
 
@@ -409,7 +423,7 @@ Por padrão, as tarefas ficam em:
 ~/.local/share/dukielist/dukielist.db
 ```
 
-Esse arquivo contém tarefas, vínculos externos e preferências locais. Como o SQLite usa WAL,
+Esse arquivo contém tarefas, notas, vínculos externos e preferências locais. Como o SQLite usa WAL,
 faça a cópia pela API de backup do próprio SQLite, inclusive se a aplicação estiver aberta:
 
 ```bash

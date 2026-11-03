@@ -33,6 +33,15 @@ class ViewMode(str, Enum):
 
 
 @dataclass(slots=True)
+class Note:
+    id: int | None
+    title: str
+    content: str
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+
+
+@dataclass(slots=True)
 class Task:
     id: int | None
     title: str

@@ -314,6 +314,25 @@ class TaskServiceTest(unittest.TestCase):
         self.assertTrue(bottom.endswith("█"))
         self.assertIn("│", top)
 
+    def test_notes_service_crud(self) -> None:
+        note = self.service.create_note(title="Anotação rápida", content="Lembrar de comprar café")
+        self.assertEqual(note.title, "Anotação rápida")
+        self.assertEqual(note.content, "Lembrar de comprar café")
+        self.assertIsNotNone(note.id)
+
+        retrieved = self.service.get_note(note.id)
+        self.assertIsNotNone(retrieved)
+        self.assertEqual(retrieved.title, "Anotação rápida")
+
+        updated = self.service.update_note(note.id, title="Café e chá", content="Comprar grãos")
+        self.assertEqual(updated.title, "Café e chá")
+
+        notes = self.service.list_notes()
+        self.assertEqual(len(notes), 1)
+
+        self.assertTrue(self.service.delete_note(note.id))
+        self.assertEqual(len(self.service.list_notes()), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

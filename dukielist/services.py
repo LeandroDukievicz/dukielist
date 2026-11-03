@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
-from .models import Category, Priority, Status, Task, ViewMode
+from .models import Category, Note, Priority, Status, Task, ViewMode
 from .storage import SQLiteStorage
 
 
@@ -155,6 +155,36 @@ class TaskService:
 
     def delete(self, task_id: int) -> bool:
         return self.storage.delete(task_id)
+
+    def list_notes(self) -> list[Note]:
+        return self.storage.list_notes()
+
+    def get_note(self, note_id: int) -> Note | None:
+        return self.storage.get_note(note_id)
+
+    def create_note(self, *, title: str, content: str) -> Note:
+        clean_title = title.strip() or "Sem título"
+        now = datetime.now()
+        return self.storage.create_note(Note(
+            id=None,
+            title=clean_title,
+            content=content,
+            created_at=now,
+            updated_at=now,
+        ))
+
+    def update_note(self, note_id: int, *, title: str, content: str) -> Note:
+        note = self.storage.get_note(note_id)
+        if not note:
+            raise ValueError("Nota não encontrada.")
+        clean_title = title.strip() or "Sem título"
+        note.title = clean_title
+        note.content = content
+        note.updated_at = datetime.now()
+        return self.storage.update_note(note)
+
+    def delete_note(self, note_id: int) -> bool:
+        return self.storage.delete_note(note_id)
 
     @staticmethod
     def progress(tasks: list[Task], day: date | None = None) -> Progress:

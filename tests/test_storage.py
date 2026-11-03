@@ -4,7 +4,7 @@ import unittest
 from datetime import date, datetime
 from pathlib import Path
 
-from dukielist.models import Category, Priority, Status, Task
+from dukielist.models import Category, Note, Priority, Status, Task
 from dukielist.storage import SQLiteStorage
 
 
@@ -234,3 +234,38 @@ class ConnectionTest(unittest.TestCase):
                     for row in migrated.execute("PRAGMA table_info(external_task_links)")
                 }
             self.assertIn("pending_completed", columns)
+
+    def test_notes_storage_crud(self):
+        with tempfile.TemporaryDirectory() as directory:
+            storage = SQLiteStorage(Path(directory) / "tasks.db")
+            now = datetime.now()
+            note = storage.create_note(Note(
+                id=None,
+                title="Nota de Teste",
+                content="Conteúdo da nota",
+                created_at=now,
+                updated_at=now,
+            ))
+            self.assertIsNotNone(note.id)
+            self.assertEqual(note.title, "Nota de Teste")
+            self.assertEqual(note.content, "Conteúdo da nota")
+
+            retrieved = storage.get_note(note.id)
+            self.assertIsNotNone(retrieved)
+            self.assertEqual(retrieved.title, "Nota de Teste")
+
+            notes = storage.list_notes()
+            self.assertEqual(len(notes), 1)
+            self.assertEqual(notes[0].id, note.id)
+
+            note.title = "Título Atualizado"
+            note.content = "Texto novo"
+            storage.update_note(note)
+
+            updated = storage.get_note(note.id)
+            self.assertEqual(updated.title, "Título Atualizado")
+            self.assertEqual(updated.content, "Texto novo")
+
+            self.assertTrue(storage.delete_note(note.id))
+            self.assertIsNone(storage.get_note(note.id))
+            self.assertEqual(len(storage.list_notes()), 0)
