@@ -121,11 +121,31 @@ class TaskService:
             raise ValueError("O término deve acontecer depois do início.")
 
     def toggle(self, task_id: int) -> Task:
+        """Alterna o status da tarefa inteira, em todos os seus dias."""
         task = self._require(task_id)
-        return self._save_status(task, Status.PENDING if task.completed else Status.COMPLETED)
+        return self.set_status(task_id, Status.PENDING if task.completed else Status.COMPLETED)
 
     def set_status(self, task_id: int, status: Status) -> Task:
-        return self._save_status(self._require(task_id), status)
+        """Define o status da tarefa inteira e descarta as marcas por dia."""
+        task = self.storage.set_task_status(task_id, status)
+        if task is None:
+            raise ValueError("Tarefa não encontrada.")
+        return task
+
+    def toggle_day(self, task_id: int, day: date) -> Task:
+        """Alterna apenas o dia indicado de uma tarefa."""
+        task = self._require(task_id)
+        current = task.status_on(day)
+        return self.set_day_status(
+            task_id, day, Status.PENDING if current is Status.COMPLETED else Status.COMPLETED
+        )
+
+    def set_day_status(self, task_id: int, day: date, status: Status) -> Task:
+        """Registra o status de um único dia, sem tocar nos outros."""
+        task = self.storage.set_day_status(task_id, day, status)
+        if task is None:
+            raise ValueError("Tarefa não encontrada.")
+        return task
 
     def _require(self, task_id: int) -> Task:
         task = self.storage.get(task_id)
@@ -133,23 +153,25 @@ class TaskService:
             raise ValueError("Tarefa não encontrada.")
         return task
 
-    def _save_status(self, task: Task, status: Status) -> Task:
-        task.status = status
-        task.updated_at = datetime.now()
-        return self.storage.update(task)
-
     def delete(self, task_id: int) -> bool:
         return self.storage.delete(task_id)
 
     @staticmethod
-    def progress(tasks: list[Task]) -> Progress:
-        return Progress(total=len(tasks), completed=sum(task.completed for task in tasks))
+    def progress(tasks: list[Task], day: date | None = None) -> Progress:
+        """Conclusão do período; com ``day``, a do dia em cada tarefa."""
+        completed = sum(
+            (task.status_on(day) is Status.COMPLETED) if day else task.completed
+            for task in tasks
+        )
+        return Progress(total=len(tasks), completed=completed)
 
     @staticmethod
-    def breakdown(tasks: list[Task], today: date | None = None) -> StatusBreakdown:
+    def breakdown(
+        tasks: list[Task], today: date | None = None, day: date | None = None
+    ) -> StatusBreakdown:
         counts = {"completed": 0, "pending": 0, "overdue": 0, "missed": 0}
         for task in tasks:
-            counts[task.display_state(today)] += 1
+            counts[task.display_state(today, day)] += 1
         return StatusBreakdown(total=len(tasks), **counts)
 
 

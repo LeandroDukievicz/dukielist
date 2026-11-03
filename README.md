@@ -40,7 +40,8 @@ As imagens abaixo foram geradas a partir da aplicação em um terminal de 168 co
 - Escolher as datas em calendários completos e definir início e término em seletores de horário.
 - Editar qualquer tarefa selecionada e alterar todos os seus campos.
 - Concluir e reabrir tarefas.
-- Ver um **`[!]` amarelo** no lugar do `[ ]` quando o dia da tarefa passa e ela continua pendente, e registrar depois se ela foi concluída ou **não concluída**.
+- Decidir **dia a dia** uma tarefa que ocupa vários dias: concluir a terça e registrar a segunda como não concluída, na mesma tarefa.
+- Ver um **`[!]` amarelo** no lugar do `[ ]` em todo dia que passa sem a tarefa ser concluída nele, e registrar depois se ela foi concluída ou **não concluída** naquele dia.
 - Excluir tarefas com confirmação.
 - Filtrar por texto, categoria, prioridade e status; usar `V` para limpar filtros e ver todas as tarefas.
 - Navegar para o dia, a semana ou o mês anterior e seguinte, pelas setas do teclado ou pelos atalhos `N` e `B`.
@@ -67,13 +68,13 @@ A coluna `STATUS` e os cartões da semana mostram, entre colchetes, em que pé e
 
 | Marcador | Status | Quando aparece |
 | --- | --- | --- |
-| `[ ]` | Pendente | A tarefa ainda está dentro do prazo. |
-| `[✓]` | Concluída | Você marcou a tarefa como feita. |
-| `[!]` | Atrasada | **Automático**: o último dia da tarefa passou e ela continua pendente. |
-| `[✗]` | Não concluída | Você registrou que a tarefa não foi feita. |
+| `[ ]` | Pendente | O dia ainda não chegou ao fim. |
+| `[✓]` | Concluída | Você marcou aquele dia como feito. |
+| `[!]` | Atrasada | **Automático**: o dia passou e continua pendente. |
+| `[✗]` | Não concluída | Você registrou que não conseguiu naquele dia. |
 
-O `[!]` é calculado pela data, não guardado no banco: assim que o dia vira, toda tarefa pendente
-que ficou para trás passa a aparecer em amarelo, sem precisar reabrir o aplicativo. Ele é um
+O `[!]` é calculado pela data, não guardado no banco: assim que o dia vira, todo dia pendente que
+ficou para trás passa a aparecer em amarelo, sem precisar reabrir o aplicativo. Ele é um
 lembrete de que falta uma decisão, e some quando você resolve a pendência de um dos dois jeitos:
 
 - `S` (ou **[ Marcar como concluída ]** no card de edição) para dizer que você conseguiu concluir.
@@ -81,9 +82,28 @@ lembrete de que falta uma decisão, e some quando você resolve a pendência de 
 
 O status **Não concluída** também está na lista do campo `Status:` do card de edição e no filtro de
 status (`F` abre o filtro). Tarefas não concluídas ficam no histórico: `L` (limpar concluídas)
-remove apenas as concluídas. Em tarefas de vários dias, o `[!]` só aparece depois que o **último**
-dia do intervalo passa. No calendário do modo Mês, onde não cabe um marcador por tarefa, os dias
-com tarefas atrasadas ou não concluídas ganham um `!` ao lado dos pontos de categoria.
+remove apenas as concluídas. No calendário do modo Mês, onde não cabe um marcador por tarefa, os
+dias com tarefas atrasadas ou não concluídas ganham um `!` ao lado dos pontos de categoria.
+
+### Tarefas de vários dias
+
+Uma tarefa que começa na segunda e termina na sexta aparece em todos os dias do intervalo, e
+**cada dia guarda o seu próprio status**. Se você não conseguiu fazer na segunda, marque só a
+segunda: a terça, a quarta e o resto continuam como estavam.
+
+- **Teclas minúsculas decidem o dia sob o cursor**: `C` alterna, `S` conclui, `U` reabre e `K`
+  registra que aquele dia não foi concluído.
+- **Teclas maiúsculas decidem a tarefa inteira**: `SHIFT+C`, `SHIFT+U` e `SHIFT+K` aplicam o
+  status a todos os dias e descartam as marcas individuais.
+- Um dia sem decisão própria segue o status da tarefa: é o comportamento de sempre, para quem
+  nunca precisar marcar dia a dia.
+- Quando **todos** os dias ficam concluídos, a tarefa inteira passa a concluída sozinha. Se todos
+  foram decididos e pelo menos um ficou para trás, ela fica como não concluída e para de cobrar
+  uma decisão.
+
+O dia que recebe a decisão é o que está na tela: o dia exibido no modo Dia, a coluna sob o cursor
+no modo Semana e o dia selecionado no calendário do modo Mês. No modo Dia, a barra de progresso
+mede a conclusão **daquele dia**; nos modos Semana e Mês, a da tarefa inteira.
 
 Para quem usa as integrações: Trello e Google Agenda só conhecem *feito* e *não feito*, então uma
 tarefa **Não concluída** chega lá como não feita. O DukieList guarda o status completo e não deixa
@@ -118,9 +138,10 @@ entre os controles, e `T` volta para hoje em qualquer modo.
 | `R` | Abrir a previsão do tempo |
 | `A` | Adicionar tarefa |
 | `E` | Editar tarefa selecionada |
-| `C` | Concluir ou reabrir tarefa |
-| `S` / `U` | Marcar como concluída / desmarcar |
-| `K` | Marcar como não concluída |
+| `C` | Concluir ou reabrir o dia sob o cursor |
+| `S` / `U` | Concluir / reabrir o dia sob o cursor |
+| `K` | Registrar que o dia sob o cursor não foi concluído |
+| `SHIFT+C` / `SHIFT+U` / `SHIFT+K` | O mesmo, mas na tarefa inteira |
 | `X` / `DELETE` | Excluir tarefa com confirmação |
 | `F` / `P` | Filtrar por categoria / prioridade |
 | `L` | Limpar tarefas concluídas do período (não remove as não concluídas) |

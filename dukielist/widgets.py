@@ -55,6 +55,10 @@ STATUS_LEGEND = (
     ("missed", "Não concluída"),
 )
 
+# Numa tarefa de vários dias, cada dia carrega o seu próprio marcador: as
+# teclas minúsculas decidem o dia sob o cursor e as maiúsculas, o intervalo
+# inteiro. Dias sem decisão herdam o status da tarefa.
+
 
 def gradient_text(value: str, start: str = "#00efff", end: str = "#ff38d1") -> Text:
     """Renderiza o branding com uma variação de cor por caractere."""
@@ -71,8 +75,8 @@ def gradient_text(value: str, start: str = "#00efff", end: str = "#ff38d1") -> T
     return text
 
 
-def status_render(task: Task) -> Text:
-    marker, color, _ = STATUS_MARKERS[task.display_state()]
+def status_render(task: Task, day: date | None = None) -> Text:
+    marker, color, _ = STATUS_MARKERS[task.display_state(day=day)]
     return Text(marker, style=color)
 
 
@@ -207,8 +211,10 @@ class SidebarPanel(Static):
         if mode == ViewMode.DAY.value:
             return [
                 ("←→", "Dia anterior / próximo"), ("↑↓", "Escolher tarefa"),
-                ("a", "Adicionar tarefa"), ("c", "Concluir tarefa"),
-                ("k", "Marcar não concluída"), ("u", "Reabrir tarefa"),
+                ("a", "Adicionar tarefa"), ("c", "Concluir o dia"),
+                ("k", "Não concluí o dia"), ("u", "Reabrir o dia"),
+                ("C", "Concluir todos os dias"), ("K", "Não concluí nenhum dia"),
+                ("U", "Reabrir todos os dias"),
                 ("x", "Deletar tarefa"), ("e", "Editar tarefa"),
                 ("v", "Ver todas as tarefas"), ("f", "Filtrar por categoria"),
                 ("p", "Filtrar por prioridade"), ("l", "Limpar concluídas"),
@@ -219,15 +225,19 @@ class SidebarPanel(Static):
                 ("←→", "Dia, trocando de semana"), ("↑↓", "Tarefas do dia"),
                 ("a", "Adicionar tarefa"), ("e", "Editar tarefa"),
                 ("x", "Deletar tarefa"), ("v", "Ver tarefa"),
-                ("s", "Marcar como concluída"), ("u", "Desmarcar tarefa"),
-                ("k", "Marcar não concluída"),
+                ("s", "Concluir o dia"), ("u", "Reabrir o dia"),
+                ("k", "Não concluí o dia"),
+                ("C", "Concluir todos os dias"), ("K", "Não concluí nenhum dia"),
+                ("U", "Reabrir todos os dias"),
                 ("n", "Ir para próxima semana"), ("b", "Ir para semana anterior"),
                 ("h", "Mostrar ajuda"), ("q", "Sair"),
             ]
         return [
             ("←→", "Dia, trocando de mês"), ("↑↓", "Semana anterior / próxima"),
             ("a", "Adicionar tarefa (no dia)"), ("e", "Editar tarefa (do dia)"),
-            ("k", "Marcar não concluída"), ("v", "Ver tarefas do dia"),
+            ("c", "Concluir o dia"), ("k", "Não concluí o dia"),
+            ("C", "Concluir todos os dias"), ("K", "Não concluí nenhum dia"),
+            ("v", "Ver tarefas do dia"),
             ("b", "Mês anterior"),
             ("n", "Próximo mês"), ("h", "Mostrar ajuda"), ("q", "Sair"),
         ]
@@ -352,7 +362,7 @@ class CalendarGrid(Static):
                     (
                         STATUS_MARKERS[state][1]
                         for state in ("overdue", "missed")
-                        if any(task.display_state() == state for task in tasks)
+                        if any(task.display_state(day=current) == state for task in tasks)
                     ),
                     None,
                 )
@@ -452,9 +462,9 @@ class WeekBoard(Static):
         tasks = self._current_day_tasks()
         return tasks[self.task_index].id if tasks and self.task_index < len(tasks) else None
 
-    def _task_line(self, cell: Text, task: Task, selected: bool) -> None:
+    def _task_line(self, cell: Text, task: Task, selected: bool, day: date) -> None:
         start = len(cell)
-        marker, marker_color, title_style = STATUS_MARKERS[task.display_state()]
+        marker, marker_color, title_style = STATUS_MARKERS[task.display_state(day=day)]
         from textwrap import wrap
 
         column_width = max(10, (self.size.width // (7 if self.size.width >= 112 else 3 if self.size.width >= 65 else 1)) - 5)
@@ -504,7 +514,9 @@ class WeekBoard(Static):
             offset = max(0, self.task_index - capacity + 1) if index == self.day_index else 0
             cell = Text()
             for position, task in enumerate(tasks[offset:offset + capacity], offset):
-                self._task_line(cell, task, index == self.day_index and position == self.task_index)
+                self._task_line(
+                    cell, task, index == self.day_index and position == self.task_index, current
+                )
                 cell.append("\n")
             if not tasks:
                 cell.append("Sem tarefas\n", style="#647fa6")
@@ -561,15 +573,16 @@ class TaskTable(DataTable):
         self.zebra_stripes = True
         self.add_columns("#", "STATUS", "TAREFA")
 
-    def fill(self, tasks: list[Task]) -> None:
+    def fill(self, tasks: list[Task], day: date | None = None) -> None:
+        """Preenche a lista; com ``day``, o status é o daquele dia."""
         self.clear(columns=False)
         for index, task in enumerate(tasks, start=1):
             title = Text()
             title.append(f"{task.schedule_label}  ", style="#00e5ff")
-            title.append(task.title, style=STATUS_MARKERS[task.display_state()][2])
+            title.append(task.title, style=STATUS_MARKERS[task.display_state(day=day)][2])
             self.add_row(
                 Text(str(index), style="#7390b9"),
-                status_render(task),
+                status_render(task, day),
                 title,
                 key=str(task.id),
             )

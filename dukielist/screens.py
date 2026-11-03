@@ -177,6 +177,18 @@ class MainScreen(Screen[None]):
         Status.MISSED: "Tarefa marcada como não concluída.",
     }
 
+    RANGE_NOTICES = {
+        Status.COMPLETED: "Tarefa concluída em todos os dias.",
+        Status.PENDING: "Tarefa reaberta em todos os dias.",
+        Status.MISSED: "Tarefa marcada como não concluída em todos os dias.",
+    }
+
+    DAY_NOTICES = {
+        Status.COMPLETED: "{day}: dia concluído.",
+        Status.PENDING: "{day}: dia reaberto.",
+        Status.MISSED: "{day}: dia não concluído.",
+    }
+
     BINDINGS = [
         ("d", "day_command", "Dia"),
         ("w", "set_mode('week')", "Semana"),
@@ -185,10 +197,13 @@ class MainScreen(Screen[None]):
         ("r", "show_weather", "Previsão"),
         ("a", "add_task", "Adicionar"),
         ("e", "edit_task", "Editar"),
-        ("c", "toggle_task", "Concluir"),
-        ("s", "mark_completed", "Marcar concluída"),
-        ("u", "mark_pending", "Desmarcar"),
-        ("k", "mark_missed", "Não concluída"),
+        ("c", "toggle_task", "Concluir o dia"),
+        ("s", "mark_completed", "Concluir o dia"),
+        ("u", "mark_pending", "Reabrir o dia"),
+        ("k", "mark_missed", "Não concluí o dia"),
+        ("C", "mark_range_completed", "Concluir tudo"),
+        ("U", "mark_range_pending", "Reabrir tudo"),
+        ("K", "mark_range_missed", "Não concluí nada"),
         ("x", "delete_task", "Excluir"),
         ("delete", "delete_task", "Excluir"),
         ("f", "filter_category", "Filtrar categoria"),
@@ -411,7 +426,7 @@ class MainScreen(Screen[None]):
         self._set_active_mode()
 
         day_tasks = self.service.list_between(self.anchor_date, self.anchor_date + timedelta(days=1), self.filters)
-        self._fill_table("day-table", day_tasks)
+        self._fill_table("day-table", day_tasks, day=self.anchor_date)
 
         week_start, week_end = week_bounds(self.anchor_date)
         week_tasks = self.service.list_between(week_start, week_end, self.filters)
@@ -424,18 +439,20 @@ class MainScreen(Screen[None]):
             self.anchor_date.year, self.anchor_date.month, month_tasks, self.selected_month_day
         )
         selected_day_tasks = [task for task in month_tasks if task.occurs_on(self.selected_month_day)]
-        self._fill_table("month-table", selected_day_tasks)
+        self._fill_table("month-table", selected_day_tasks, day=self.selected_month_day)
 
         mode_label = {ViewMode.DAY: "Progresso do dia", ViewMode.WEEK: "Progresso da semana", ViewMode.MONTH: "Progresso do mês"}[self.mode]
-        self.query_one("#progress-panel", ProgressPanel).update_progress(mode_label, self.service.progress(tasks))
+        # No modo dia o progresso é o daquele dia; nos outros, o da tarefa inteira.
+        progress_day = self.anchor_date if self.mode is ViewMode.DAY else None
+        self.query_one("#progress-panel", ProgressPanel).update_progress(mode_label, self.service.progress(tasks, progress_day))
         self.query_one("#sidebar", SidebarPanel).update_for_mode(self.mode.value, tasks, self.filters.active)
         self._update_empty_states()
 
-    def _fill_table(self, table_id: str, tasks: list[Task]) -> None:
+    def _fill_table(self, table_id: str, tasks: list[Task], day: date | None = None) -> None:
         table = self.query_one(f"#{table_id}", TaskTable)
         if not table.columns:
             table.configure_table()
-        table.fill(tasks)
+        table.fill(tasks, day)
         self.task_ids[table_id] = {str(task.id): task.id for task in tasks if task.id is not None}
         if table_id == f"{self.mode.value}-table":
             if self.selected_task_id not in self.task_ids[table_id].values():
@@ -509,42 +526,98 @@ class MainScreen(Screen[None]):
             return
         self.app.push_screen(TaskFormScreen(self.service, mode=self.mode, task=task), self._on_form_result)
 
+    def _cursor_day(self) -> date:
+        """Dia a que pertence a tarefa selecionada na visualização atual."""
+        if self.mode is ViewMode.WEEK:
+            return self.query_one(WeekBoard).selected_day
+        if self.mode is ViewMode.MONTH:
+            return self.selected_month_day
+        return self.anchor_date
+
     def action_toggle_task(self) -> None:
         task = self._current_task()
         if not task:
             self.notify("Selecione uma tarefa primeiro.", title="Nenhuma tarefa", severity="warning")
             return
-        self._apply_status(task, Status.PENDING if task.completed else Status.COMPLETED)
+        day = self._cursor_day()
+        self._apply_day_status(
+            task,
+            Status.PENDING if task.status_on(day) is Status.COMPLETED else Status.COMPLETED,
+        )
 
-    def _apply_status(self, task: Task, status: Status) -> None:
+    def _apply_day_status(self, task: Task, status: Status) -> None:
+        """Decide um único dia da tarefa, deixando os outros como estavam."""
+        day = self._cursor_day()
+        if not task.multi_day:
+            # Uma tarefa de um dia só não tem como divergir de si mesma.
+            self._apply_status(task, status)
+            return
+        if task.status_on(day) is status:
+            return
+        try:
+            self.service.set_day_status(task.id, day, status)
+        except ValueError as exc:
+            self.notify(str(exc), title="Erro", severity="error")
+            return
+        self.notify(
+            self.DAY_NOTICES[status].format(day=format_date(day)),
+            title="Atualizado",
+            severity="information",
+        )
+        self._after_status_change()
+
+    def _apply_status(self, task: Task, status: Status, *, whole_range: bool = False) -> None:
+        """Aplica um status à tarefa inteira, limpando as marcas de cada dia."""
         try:
             updated = self.service.set_status(task.id, status)
         except ValueError as exc:
             self.notify(str(exc), title="Erro", severity="error")
             return
-        self.notify(self.STATUS_NOTICES[updated.status], title="Atualizado", severity="information")
+        notices = self.RANGE_NOTICES if whole_range and task.multi_day else self.STATUS_NOTICES
+        self.notify(notices[updated.status], title="Atualizado", severity="information")
+        self._after_status_change()
+
+    def _after_status_change(self) -> None:
         self._refresh_all()
         request_sync = getattr(self.app, "request_external_sync", None)
         if request_sync is not None:
             request_sync()
 
-    def _set_selected_status(self, status: Status) -> None:
+    def _selected_task_or_warn(self) -> Task | None:
         task = self._current_task()
         if not task:
             self.notify("Selecione uma tarefa primeiro.", title="Nenhuma tarefa", severity="warning")
-            return
-        if task.status is not status:
-            self._apply_status(task, status)
+        return task
+
+    def _set_selected_day_status(self, status: Status) -> None:
+        task = self._selected_task_or_warn()
+        if task:
+            self._apply_day_status(task, status)
+
+    def _set_selected_range_status(self, status: Status) -> None:
+        task = self._selected_task_or_warn()
+        if task:
+            self._apply_status(task, status, whole_range=True)
 
     def action_mark_completed(self) -> None:
-        self._set_selected_status(Status.COMPLETED)
+        self._set_selected_day_status(Status.COMPLETED)
 
     def action_mark_pending(self) -> None:
-        self._set_selected_status(Status.PENDING)
+        self._set_selected_day_status(Status.PENDING)
 
     def action_mark_missed(self) -> None:
-        """Registra que o prazo passou e a tarefa não foi concluída."""
-        self._set_selected_status(Status.MISSED)
+        """Registra que o dia passou e a tarefa não foi feita nele."""
+        self._set_selected_day_status(Status.MISSED)
+
+    def action_mark_range_completed(self) -> None:
+        self._set_selected_range_status(Status.COMPLETED)
+
+    def action_mark_range_pending(self) -> None:
+        self._set_selected_range_status(Status.PENDING)
+
+    def action_mark_range_missed(self) -> None:
+        """Descarta as marcas por dia e declara a tarefa inteira não concluída."""
+        self._set_selected_range_status(Status.MISSED)
 
     def action_delete_task(self) -> None:
         task = self._current_task()
@@ -1098,13 +1171,22 @@ class HelpScreen(ModalScreen[None]):
             text.append(f"{marker}  ", style=color + " bold")
             text.append(f"{label}\n", style="#d2def4")
         text.append(
-            "O [!] aparece sozinho quando o último dia da tarefa passa e ela ainda "
-            "está pendente.\nDepois, use S para concluir ou K para registrar que não "
-            "foi concluída.\n\n",
+            "O [!] aparece sozinho em todo dia que passa sem a tarefa ser concluída "
+            "nele.\nDepois, use S para concluir aquele dia ou K para registrar que "
+            "ele não foi concluído.\n\n",
+            style="#9bb2d6",
+        )
+        text.append("TAREFAS DE VÁRIOS DIAS\n", style="#00e5ff bold")
+        text.append(
+            "Cada dia guarda o seu próprio status: dá para concluir a terça e marcar "
+            "a segunda\ncomo não concluída na mesma tarefa. As teclas minúsculas "
+            "decidem o dia sob o cursor\ne as maiúsculas, a tarefa inteira. Dias sem "
+            "decisão seguem o status da tarefa, e\nquando todos os dias ficam "
+            "concluídos a tarefa inteira é concluída.\n\n",
             style="#9bb2d6",
         )
         text.append("ATALHOS\n", style="#00e5ff bold")
-        for key, label in (("D / W / M", "alternar modos Dia, Semana e Mês"), ("T", "ir para a data de hoje"), ("R", "abrir previsão do tempo"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C / S / U", "alternar, concluir ou desmarcar"), ("K", "marcar como não concluída"), ("X / DELETE", "excluir com confirmação"), ("F / P", "filtrar categoria ou prioridade"), ("V", "ver tarefas / limpar filtros"), ("N / B", "próximo período / período anterior"), ("CTRL+G", "conectar ou sincronizar Google Agenda"), ("I", "sobre DukieList"), ("L", "limpar concluídas"), ("Q", "sair do DukieList")):
+        for key, label in (("D / W / M", "alternar modos Dia, Semana e Mês"), ("T", "ir para a data de hoje"), ("R", "abrir previsão do tempo"), ("A", "adicionar tarefa"), ("E", "editar tarefa selecionada"), ("C / S / U", "alternar, concluir ou reabrir o dia sob o cursor"), ("K", "o dia sob o cursor não foi concluído"), ("SHIFT+C / U / K", "o mesmo, mas na tarefa inteira"), ("X / DELETE", "excluir com confirmação"), ("F / P", "filtrar categoria ou prioridade"), ("V", "ver tarefas / limpar filtros"), ("N / B", "próximo período / período anterior"), ("CTRL+G", "conectar ou sincronizar Google Agenda"), ("I", "sobre DukieList"), ("L", "limpar concluídas"), ("Q", "sair do DukieList")):
             text.append(f"{key:<12}", style="#ff38d1 bold")
             text.append(f" {label}\n", style="#d2def4")
         yield VerticalScroll(Static("?  ATALHOS DO DUKIELIST", classes="modal-title"), Static(text, classes="help-copy"), Button(Text("[ Fechar ]"), id="help-close", classes="primary-action"), id="help-card")

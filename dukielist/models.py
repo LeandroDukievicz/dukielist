@@ -48,6 +48,12 @@ class Task:
     view_mode: ViewMode = ViewMode.DAY
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
+    day_status: dict[date, Status] = field(default_factory=dict)
+    """Status registrado para dias específicos de uma tarefa de vários dias.
+
+    Um dia ausente deste mapa herda o ``status`` da tarefa, que é o
+    comportamento de uma tarefa nunca marcada dia a dia.
+    """
 
     @property
     def completed(self) -> bool:
@@ -75,8 +81,27 @@ class Task:
             return False
         return self.last_day < (today or date.today())
 
-    def display_state(self, today: date | None = None) -> str:
-        """Estado mostrado na interface: a conclusão ou a falta dela."""
+    @property
+    def multi_day(self) -> bool:
+        return self.last_day > self.start_date
+
+    def status_on(self, day: date) -> Status:
+        """Status de um dia; sem marca própria, vale o status da tarefa."""
+        return self.day_status.get(day, self.status)
+
+    def display_state(self, today: date | None = None, day: date | None = None) -> str:
+        """Estado mostrado na interface: a conclusão ou a falta dela.
+
+        Com ``day``, o estado é o daquele dia da tarefa: um dia ainda
+        pendente que já passou aparece atrasado sem esperar o fim do prazo.
+        """
+        if day is not None:
+            status = self.status_on(day)
+            if status is Status.COMPLETED:
+                return "completed"
+            if status is Status.MISSED:
+                return "missed"
+            return "overdue" if day < (today or date.today()) else "pending"
         if self.completed:
             return "completed"
         if self.missed:
@@ -84,6 +109,30 @@ class Task:
         if self.is_overdue(today):
             return "overdue"
         return "pending"
+
+    def each_day(self) -> Iterator[date]:
+        """Todos os dias ocupados pela tarefa, do início ao último."""
+        current = self.start_date
+        while current <= self.last_day:
+            yield current
+            current += timedelta(days=1)
+
+    def rollup_status(self) -> Status | None:
+        """Status da tarefa inteira a partir das marcas de cada dia.
+
+        É ``None`` quando nenhum dia foi marcado: aí o status da tarefa
+        continua sendo o que o usuário (ou a integração) definiu. Um dia em
+        aberto mantém a tarefa pendente; com todos decididos, ela só é
+        concluída se nenhum dia ficou para trás.
+        """
+        if not self.day_status:
+            return None
+        marks = [self.day_status.get(day) for day in self.each_day()]
+        if any(mark is None or mark is Status.PENDING for mark in marks):
+            return Status.PENDING
+        if all(mark is Status.COMPLETED for mark in marks):
+            return Status.COMPLETED
+        return Status.MISSED
 
     def occurs_on(self, day: date) -> bool:
         return self.start_date <= day <= self.last_day

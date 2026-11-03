@@ -132,6 +132,157 @@ class TaskServiceTest(unittest.TestCase):
         # O progresso continua medindo apenas o que foi concluído.
         self.assertEqual(self.service.progress(self.service.list_between(*period)).percent, 25)
 
+    def test_each_day_of_a_task_carries_its_own_status(self) -> None:
+        monday = date.today() - timedelta(days=date.today().weekday())
+        friday = monday + timedelta(days=4)
+        task = self._all_day(start=monday, end=friday)
+
+        self.service.set_day_status(task.id, monday, Status.MISSED)
+        self.service.set_day_status(task.id, monday + timedelta(days=1), Status.COMPLETED)
+        stored = self.service.get(task.id)
+
+        self.assertIs(stored.status_on(monday), Status.MISSED)
+        self.assertIs(stored.status_on(monday + timedelta(days=1)), Status.COMPLETED)
+        self.assertEqual(stored.display_state(monday, monday), "missed")
+        self.assertEqual(status_render(stored, monday).plain, "[✗]")
+        self.assertEqual(status_render(stored, monday + timedelta(days=1)).plain, "[✓]")
+        # Os dias restantes seguem o status da tarefa.
+        for day in (monday + timedelta(days=2), friday):
+            self.assertIs(stored.status_on(day), Status.PENDING)
+        # E a tarefa inteira continua em aberto: há dias por decidir.
+        self.assertIs(stored.status, Status.PENDING)
+
+    def test_a_day_left_undecided_in_the_past_shows_as_overdue(self) -> None:
+        monday = date.today() - timedelta(days=date.today().weekday())
+        friday = monday + timedelta(days=4)
+        wednesday = monday + timedelta(days=2)
+        task = self._all_day(start=monday, end=friday)
+
+        # Quarta é "hoje": segunda e terça passaram sem decisão.
+        self.assertEqual(task.display_state(wednesday, monday), "overdue")
+        self.assertEqual(task.display_state(wednesday, wednesday), "pending")
+        self.assertEqual(task.display_state(wednesday, friday), "pending")
+        # A tarefa inteira, porém, ainda não está atrasada: a sexta não chegou.
+        self.assertFalse(task.is_overdue(wednesday))
+
+        resolved = self.service.set_day_status(task.id, monday, Status.MISSED)
+        self.assertEqual(resolved.display_state(wednesday, monday), "missed")
+
+    def test_completing_every_day_completes_the_whole_task(self) -> None:
+        monday = date.today() - timedelta(days=date.today().weekday())
+        wednesday = monday + timedelta(days=2)
+        task = self._all_day(start=monday, end=wednesday)
+
+        for day in (monday, monday + timedelta(days=1)):
+            self.assertIs(self.service.set_day_status(task.id, day, Status.COMPLETED).status,
+                          Status.PENDING)
+
+        done = self.service.set_day_status(task.id, wednesday, Status.COMPLETED)
+        self.assertIs(done.status, Status.COMPLETED)
+        self.assertIs(self.service.get(task.id).status, Status.COMPLETED)
+
+        # Um dia que volta a ficar em aberto reabre a tarefa.
+        self.assertIs(self.service.set_day_status(task.id, monday, Status.PENDING).status,
+                      Status.PENDING)
+        # Todos decididos, um deles sem conclusão: a tarefa não foi concluída.
+        self.assertIs(self.service.set_day_status(task.id, monday, Status.MISSED).status,
+                      Status.MISSED)
+
+    def test_a_status_for_the_whole_task_discards_the_day_marks(self) -> None:
+        monday = date.today() - timedelta(days=date.today().weekday())
+        friday = monday + timedelta(days=4)
+        task = self._all_day(start=monday, end=friday)
+        self.service.set_day_status(task.id, monday, Status.MISSED)
+
+        whole = self.service.set_status(task.id, Status.COMPLETED)
+        self.assertEqual(whole.day_status, {})
+        stored = self.service.get(task.id)
+        self.assertEqual(stored.day_status, {})
+        self.assertIs(stored.status_on(monday), Status.COMPLETED)
+
+        # Trocar o status pelo formulário tem o mesmo efeito.
+        self.service.set_day_status(task.id, monday, Status.MISSED)
+        self.assertIs(self.service.get(task.id).status, Status.PENDING)
+        edited = self._edit(task.id, monday, friday, Status.COMPLETED)
+        self.assertEqual(edited.day_status, {})
+        self.assertEqual(self.service.get(task.id).day_status, {})
+
+    def test_an_edit_that_keeps_the_status_keeps_the_day_marks(self) -> None:
+        """Renomear ou remarcar a tarefa não apaga o diário dos dias."""
+        monday = date.today() - timedelta(days=date.today().weekday())
+        friday = monday + timedelta(days=4)
+        task = self._all_day(start=monday, end=friday)
+        self.service.set_day_status(task.id, monday, Status.MISSED)
+
+        kept = self._edit(task.id, monday, friday, Status.PENDING, title="Outro título")
+        self.assertIs(kept.status_on(monday), Status.MISSED)
+        self.assertIs(self.service.get(task.id).status_on(monday), Status.MISSED)
+
+    def _edit(
+        self,
+        task_id: int,
+        start: date,
+        end: date,
+        status: Status,
+        *,
+        title: str = "Entregar relatório",
+    ) -> Task:
+        return self.service.update(
+            task_id,
+            title=title,
+            description="",
+            start_date=start,
+            end_date=end,
+            start_time=None,
+            end_time=None,
+            all_day=True,
+            priority=Priority.MEDIUM,
+            category=Category.WORK,
+            status=status,
+        )
+
+    def test_toggle_day_only_touches_the_selected_day(self) -> None:
+        monday = date.today() - timedelta(days=date.today().weekday())
+        friday = monday + timedelta(days=4)
+        task = self._all_day(start=monday, end=friday)
+
+        toggled = self.service.toggle_day(task.id, friday)
+        self.assertIs(toggled.status_on(friday), Status.COMPLETED)
+        self.assertIs(toggled.status_on(monday), Status.PENDING)
+        self.assertIs(self.service.toggle_day(task.id, friday).status_on(friday), Status.PENDING)
+
+    def test_day_marks_outside_the_new_range_are_discarded(self) -> None:
+        monday = date.today() - timedelta(days=date.today().weekday())
+        friday = monday + timedelta(days=4)
+        task = self._all_day(start=monday, end=friday)
+        self.service.set_day_status(task.id, friday, Status.MISSED)
+        self.service.set_day_status(task.id, monday, Status.COMPLETED)
+
+        shortened = self._edit(task.id, monday, monday + timedelta(days=1), Status.PENDING)
+        remaining = self.service.get(shortened.id).day_status
+        self.assertNotIn(friday, remaining)
+        self.assertIs(remaining[monday], Status.COMPLETED)
+
+    def test_a_day_outside_the_task_is_refused(self) -> None:
+        monday = date.today() - timedelta(days=date.today().weekday())
+        task = self._all_day(start=monday, end=monday + timedelta(days=1))
+        with self.assertRaises(ValueError):
+            self.service.set_day_status(task.id, monday + timedelta(days=5), Status.MISSED)
+
+    def test_progress_and_breakdown_can_follow_a_single_day(self) -> None:
+        monday = date.today() - timedelta(days=date.today().weekday())
+        friday = monday + timedelta(days=4)
+        task = self._all_day(start=monday, end=friday)
+        self.service.set_day_status(task.id, monday, Status.MISSED)
+        self.service.set_day_status(task.id, friday, Status.COMPLETED)
+        tasks = [self.service.get(task.id)]
+
+        self.assertEqual(self.service.progress(tasks, friday).percent, 100)
+        self.assertEqual(self.service.progress(tasks, monday).percent, 0)
+        # Sem dia, vale o status da tarefa, que ainda tem dias por decidir.
+        self.assertEqual(self.service.progress(tasks).percent, 0)
+        self.assertEqual(self.service.breakdown(tasks, monday, monday).missed, 1)
+
     def test_period_helpers(self) -> None:
         anchor = date(2026, 9, 10)
         week_start, week_end = week_bounds(anchor)

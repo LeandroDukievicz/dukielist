@@ -144,6 +144,107 @@ class InterfaceTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsInstance(self.app.screen, MainScreen)
             self.assertIs(self.app.service.get(late.id).status, Status.MISSED)
 
+    async def test_week_keys_decide_one_day_and_shift_decides_them_all(self):
+        monday = date.today() - timedelta(days=date.today().weekday())
+        friday = monday + timedelta(days=4)
+        spanning = self.app.service.create(
+            title="Relatório da semana", description="", start_date=monday,
+            end_date=friday, start_time=None, end_time=None, all_day=True,
+            priority=Priority.HIGH, category=Category.WORK)
+
+        async with self.app.run_test(size=(168, 52)) as pilot:
+            await pilot.press("enter", "w")
+            main = self.app.screen
+            board = main.query_one(WeekBoard)
+            board.day_index = 0
+            main.selected_task_id = spanning.id
+            main._refresh_all()
+            main._focus_active_view()
+            await pilot.pause()
+            while board._current_task_id() != spanning.id:
+                await pilot.press("down")
+
+            # A segunda não foi concluída; os outros dias seguem pendentes.
+            await pilot.press("k")
+            stored = self.app.service.get(spanning.id)
+            self.assertIs(stored.status_on(monday), Status.MISSED)
+            self.assertIs(stored.status_on(friday), Status.PENDING)
+            self.assertIs(stored.status, Status.PENDING)
+            self.assertEqual(status_render(stored, monday).plain, "[✗]")
+            self.assertEqual(status_render(stored, friday).plain, "[ ]")
+
+            # A terça, sim: o cursor anda um dia e a decisão é só dele.
+            await pilot.press("right")
+            while board._current_task_id() != spanning.id:
+                await pilot.press("down")
+            await pilot.press("c")
+            stored = self.app.service.get(spanning.id)
+            self.assertIs(stored.status_on(monday + timedelta(days=1)), Status.COMPLETED)
+            self.assertIs(stored.status_on(monday), Status.MISSED)
+
+            # Shift decide a tarefa inteira e descarta as marcas dos dias.
+            await pilot.press("C")
+            stored = self.app.service.get(spanning.id)
+            self.assertIs(stored.status, Status.COMPLETED)
+            self.assertEqual(stored.day_status, {})
+            self.assertEqual(status_render(stored, monday).plain, "[✓]")
+
+            await pilot.press("K")
+            self.assertIs(self.app.service.get(spanning.id).status, Status.MISSED)
+            await pilot.press("U")
+            self.assertIs(self.app.service.get(spanning.id).status, Status.PENDING)
+
+            # O quadro desenha cada dia com o seu próprio marcador. A coluna da
+            # segunda só mostra a tarefa longa com o cursor nela: as outras nove
+            # ocupam a janela visível.
+            self.app.service.set_day_status(spanning.id, monday, Status.MISSED)
+            self.app.service.set_day_status(spanning.id, monday + timedelta(days=1),
+                                            Status.COMPLETED)
+            main._refresh_all()
+            await pilot.press("left")
+            while board._current_task_id() != spanning.id:
+                await pilot.press("down")
+            await pilot.pause()
+            output = StringIO()
+            Console(file=output, width=board.size.width, color_system=None).print(board.render())
+            drawn = output.getvalue()
+            self.assertIn("[✗] Relatório", drawn)
+            self.assertIn("[✓] Relatório", drawn)
+
+    async def test_day_mode_keys_mark_the_day_on_screen(self):
+        monday = date.today() - timedelta(days=date.today().weekday())
+        friday = monday + timedelta(days=4)
+        spanning = self.app.service.create(
+            title="Relatório da semana", description="", start_date=monday,
+            end_date=friday, start_time=None, end_time=None, all_day=True,
+            priority=Priority.MEDIUM, category=Category.WORK)
+
+        async with self.app.run_test(size=(168, 52)) as pilot:
+            await pilot.press("enter")
+            main = self.app.screen
+            main.anchor_date = friday
+            main.selected_task_id = spanning.id
+            main._refresh_all()
+            main._focus_active_view()
+            await pilot.pause()
+            self.assertEqual(main._current_task().id, spanning.id)
+
+            await pilot.press("k")
+            stored = self.app.service.get(spanning.id)
+            self.assertIs(stored.status_on(friday), Status.MISSED)
+            self.assertIs(stored.status_on(monday), Status.PENDING)
+
+            # O mesmo dia, visto pelo calendário do mês.
+            main.mode = ViewMode.MONTH
+            main.selected_month_day = monday
+            main._refresh_all()
+            main._focus_active_view()
+            await pilot.pause()
+            await pilot.press("s")
+            stored = self.app.service.get(spanning.id)
+            self.assertIs(stored.status_on(monday), Status.COMPLETED)
+            self.assertIs(stored.status_on(friday), Status.MISSED)
+
     async def test_google_connection_from_shortcut_and_button(self):
         with patch("dukielist.app.authorize_google", return_value="Agenda de teste") as authorize:
             with patch.object(self.app, "_start_google_updates") as start_updates:

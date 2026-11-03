@@ -59,6 +59,12 @@ class SQLiteStorage:
                     updated_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+                CREATE TABLE IF NOT EXISTS task_day_status (
+                    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                    day TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    PRIMARY KEY (task_id, day)
+                );
                 CREATE TABLE IF NOT EXISTS external_task_links (
                     source TEXT NOT NULL,
                     external_id TEXT NOT NULL,
@@ -147,6 +153,97 @@ class SQLiteStorage:
                 connection.execute(
                     "ALTER TABLE external_task_links ADD COLUMN pending_completed INTEGER"
                 )
+
+    @staticmethod
+    def _attach_day_status(connection, tasks: list[Task]) -> list[Task]:
+        """Preenche ``Task.day_status`` com as marcas de cada dia."""
+        ids = [task.id for task in tasks if task.id is not None]
+        if not ids:
+            return tasks
+        placeholders = ", ".join("?" for _ in ids)
+        rows = connection.execute(
+            f"SELECT task_id, day, status FROM task_day_status WHERE task_id IN ({placeholders})",
+            ids,
+        ).fetchall()
+        marks: dict[int, dict[date, Status]] = {}
+        for row in rows:
+            try:
+                status = Status(row["status"])
+            except ValueError:
+                continue
+            marks.setdefault(int(row["task_id"]), {})[date.fromisoformat(row["day"])] = status
+        for task in tasks:
+            task.day_status = marks.get(task.id, {})
+        return tasks
+
+    @staticmethod
+    def _prune_day_status(connection, task: Task) -> None:
+        """Descarta marcas de dias que saíram do intervalo da tarefa."""
+        connection.execute(
+            "DELETE FROM task_day_status WHERE task_id=? AND (day < ? OR day > ?)",
+            (task.id, task.start_date.isoformat(), task.last_day.isoformat()),
+        )
+
+    def set_day_status(self, task_id: int, day: date, status: Status) -> Task | None:
+        """Marca um único dia de uma tarefa e recalcula o status do conjunto.
+
+        O status da tarefa é o que as integrações externas conhecem: ele
+        acompanha as marcas dos dias na mesma transação.
+        """
+        with self._connect() as connection:
+            row = connection.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+            if row is None:
+                return None
+            task = Task.from_row(row)
+            if not (task.start_date <= day <= task.last_day):
+                raise ValueError("O dia escolhido está fora do intervalo da tarefa.")
+            connection.execute(
+                "INSERT INTO task_day_status (task_id, day, status) VALUES (?, ?, ?) "
+                "ON CONFLICT(task_id, day) DO UPDATE SET status=excluded.status",
+                (task_id, day.isoformat(), status.value),
+            )
+            self._attach_day_status(connection, [task])
+            rolled = task.rollup_status()
+            if rolled is not None and rolled is not task.status:
+                task.status = rolled
+                task.updated_at = datetime.now()
+                connection.execute(
+                    "UPDATE tasks SET status=?, updated_at=? WHERE id=?",
+                    (
+                        task.status.value,
+                        task.updated_at.isoformat(timespec="seconds"),
+                        task_id,
+                    ),
+                )
+                connection.execute(
+                    "UPDATE external_task_links SET pending_completed=? WHERE task_id=?",
+                    (int(task.completed), task_id),
+                )
+                self._enqueue_upsert(connection, task_id)
+            return task
+
+    def set_task_status(self, task_id: int, status: Status) -> Task | None:
+        """Aplica um status à tarefa inteira, apagando as marcas por dia."""
+        with self._connect() as connection:
+            row = connection.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+            if row is None:
+                return None
+            task = Task.from_row(row)
+            connection.execute("DELETE FROM task_day_status WHERE task_id=?", (task_id,))
+            changed = task.status is not status
+            task.status = status
+            task.updated_at = datetime.now()
+            connection.execute(
+                "UPDATE tasks SET status=?, updated_at=? WHERE id=?",
+                (status.value, task.updated_at.isoformat(timespec="seconds"), task_id),
+            )
+            if changed:
+                connection.execute(
+                    "UPDATE external_task_links SET pending_completed=? WHERE task_id=?",
+                    (int(task.completed), task_id),
+                )
+            self._enqueue_upsert(connection, task_id)
+            return task
 
     def get_setting(self, key: str) -> str | None:
         with self._connect() as connection:
@@ -365,6 +462,7 @@ class SQLiteStorage:
             f"UPDATE tasks SET {assignments} WHERE id=?",
             (*[value for _, value in updates], task.id),
         )
+        self._prune_day_status(connection, task)
 
     def create(self, task: Task) -> Task:
         with self._connect() as connection:
@@ -381,6 +479,12 @@ class SQLiteStorage:
             ).fetchone()
             self._update_task(connection, task)
             if previous is not None and previous["status"] != task.status.value:
+                # Um status definido para a tarefa inteira substitui o diário
+                # dos dias; sem isso, a marca antiga contradiria a nova decisão.
+                connection.execute(
+                    "DELETE FROM task_day_status WHERE task_id=?", (task.id,)
+                )
+                task.day_status = {}
                 connection.execute(
                     """
                     UPDATE external_task_links
@@ -396,7 +500,9 @@ class SQLiteStorage:
     def get(self, task_id: int) -> Task | None:
         with self._connect() as connection:
             row = connection.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
-        return Task.from_row(row) if row else None
+            if row is None:
+                return None
+            return self._attach_day_status(connection, [Task.from_row(row)])[0]
 
     def list_between(
         self,
@@ -438,7 +544,7 @@ class SQLiteStorage:
                 """,
                 params,
             ).fetchall()
-        return [Task.from_row(row) for row in rows]
+            return self._attach_day_status(connection, [Task.from_row(row) for row in rows])
 
     def delete(self, task_id: int) -> bool:
         with self._connect() as connection:
